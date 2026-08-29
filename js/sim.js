@@ -4,11 +4,13 @@
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
+  const MAX_STEP = 0.05;
 
   const Sim = {
     agents: [],
     wave: 1,
     waveTimer: 0,
+    scaledTime: null,
 
     init(world, vw, vh) {
       this.agents = [];
@@ -21,6 +23,23 @@
 
     update(dt, t, world, vw, vh) {
       if (ZS.scenario.paused) return; // the results card is up: the world waits
+      if (!ZS.scenario.usesTimeScale) {
+        this._step(dt, t, world, vw, vh);
+        return;
+      }
+      const scale = Math.max(0, Number(ZS.scenario.timeScale) || 0);
+      if (scale <= 0) return;
+      if (this.scaledTime === null) this.scaledTime = t;
+      let remaining = dt * scale;
+      while (remaining > 0) {
+        const step = Math.min(MAX_STEP, remaining);
+        this.scaledTime += step;
+        this._step(step, this.scaledTime, world, vw, vh);
+        remaining -= step;
+      }
+    },
+
+    _step(dt, t, world, vw, vh) {
       if (this.agents.length) {
         if (ZS.scenario.left(this.agents) === 0) {
           // the scenario's players are all gone: a new round after a beat;

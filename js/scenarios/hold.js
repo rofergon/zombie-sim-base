@@ -73,37 +73,46 @@
 
   // soldier weapons, by upgrade level (design §4)
   const WEAPONS = [
-    { name: "club", dmg: 3, range: 40, rate: 0.8 },
+    { name: "garrote", dmg: 3, range: 40, rate: 0.8 },
     { name: "machete", dmg: 6, range: 52, rate: 1 },
-    { name: "pistol", dmg: 10, range: 120, rate: 1.4 },
-    { name: "shotgun", dmg: 14, range: 128, rate: 0.9, splash: 120 },
-    { name: "SMG", dmg: 18, range: 140, rate: 2.5 },
+    { name: "pistola", dmg: 10, range: 120, rate: 1.4 },
+    { name: "escopeta", dmg: 14, range: 128, rate: 0.9, splash: 120 },
+    { name: "subfusil", dmg: 18, range: 140, rate: 2.5 },
   ];
   const UPG = {
-    gloves: { name: "gloves", base: 25, max: 5 }, // click 1,2,4,8,16
-    weapon: { name: "weapon", base: 150, max: 5 },
-    armor: { name: "armor", base: 120, max: 3 },
-    training: { name: "training", base: 100, max: 5 },
-    morale: { name: "morale", base: 90, max: 3 },
-    reinforced: { name: "reinforced", base: 150, max: 3 },
+    gloves: { name: "guantes", base: 25, max: 5 }, // click 1,2,4,8,16
+    weapon: { name: "armas", base: 150, max: 5 },
+    armor: { name: "armadura", base: 120, max: 3 },
+    training: { name: "entrenamiento", base: 100, max: 5 },
+    morale: { name: "moral", base: 90, max: 3 },
+    reinforced: { name: "refuerzo", base: 150, max: 3 },
   };
   const RETREAT = [0.5, 0.3, 0.15, 0]; // disengage below this HP fraction, by morale level
   const REINF = [1, 1.5, 2.5, 4]; // block HP multiplier, by reinforced level
   // the night weather (design §5): one modifier every third night from
   // night 3, deterministic in the night number, previewed on the dawn card
   const MODS = [
-    { name: "FOG", desc: "zombie sight −25%", sight: 0.75 },
-    { name: "RAIN", desc: "soldier fire rate −15%", rate: 0.85 },
-    { name: "STENCH", desc: "zombie speed +10%", spd: 1.1 },
-    { name: "CALM", desc: "kill reward +10%", kill: 1.1 },
+    { name: "NIEBLA", desc: "visión zombi −25%", sight: 0.75 },
+    { name: "LLUVIA", desc: "cadencia de soldados −15%", rate: 0.85 },
+    { name: "HEDOR", desc: "velocidad zombi +10%", spd: 1.1 },
+    { name: "CALMA", desc: "recompensa por baja +10%", kill: 1.1 },
   ];
   const TURRET = { dmg: 22, rate: 1, range: T.TILE * 3.5 }; // design §3.2
 
   const ST = { SOLDIER: 1, ZOMBIE: 2 };
   const BUILD_KINDS = ["wall", "gate", "yard", "farm", "barracks", "turret", "workshop"];
+  const BUILD_LABEL = {
+    wall: "muralla",
+    gate: "puerta",
+    yard: "desguace",
+    farm: "granja",
+    barracks: "cuartel",
+    turret: "torreta",
+    workshop: "taller",
+  };
   const UNLOCK = { wall: 1, gate: 1, yard: 1, farm: 3, barracks: 1, turret: 4, workshop: 8 };
   const DIG_TOOLS = [T.WATER, T.SAND, T.ROAD, T.GRASS];
-  const TOOL_NAME = { 0: "clear", 1: "water", 2: "sand", 3: "road" };
+  const TOOL_NAME = { 0: "limpiar", 1: "agua", 2: "arena", 3: "camino" };
   const H = (n) => {
     const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
     return x - Math.floor(x);
@@ -299,7 +308,7 @@
           this._spawnWalker();
           if (s.surge !== null && !this._n.surged[s.surge]) {
             this._n.surged[s.surge] = true;
-            this.toast("they're coming — " + (s.surge === 1 ? "second" : "third") + " wave!");
+            this.toast("¡se acercan, oleada " + (s.surge === 1 ? "segunda" : "tercera") + "!");
           }
         }
         if (!this.blocks.core) return this._endNight(false, true); // the core fell
@@ -345,7 +354,7 @@
       // night's loss is handled by the soft-fail in _endNight
       if (this.blocks && !this.blocks.core && this.phase === "day") {
         this.blocks.placeCore();
-        this.toast("the core is rebuilt");
+        this.toast("el núcleo ha sido reconstruido");
       }
       this.toastT = Math.max(0, this.toastT - dt);
       this.saveT += dt;
@@ -764,7 +773,7 @@
 
     _selectTool(t) {
       if (typeof t === "string" && UNLOCK[t] && this.day < UNLOCK[t]) {
-        this.toast("unlocks on day " + UNLOCK[t]);
+        this.toast("se desbloquea el día " + UNLOCK[t]);
         return;
       }
       this.tool = t;
@@ -775,12 +784,12 @@
       const kind = this.tool;
       const un = UNLOCK[kind];
       if (un && this.day < un) {
-        this.toast("unlocks on day " + un);
+        this.toast("se desbloquea el día " + un);
         return;
       }
       const cost = this._cost(kind);
       if (this.scrap < cost) {
-        this.toast("not enough scrap (" + cost + ")");
+        this.toast("chatarra insuficiente (" + cost + ")");
         return;
       }
       const r = this.blocks.place(tx, ty, kind, REINF[this.up.reinforced]);
@@ -800,7 +809,7 @@
       const refund = Math.floor(this._cost(b.kind) / 2);
       this.blocks.remove(b);
       this.scrap += refund;
-      this.toast("dismantled · +" + refund);
+      this.toast("desmontado · +" + refund);
       this.save();
     }
 
@@ -843,7 +852,7 @@
       if (this.up[k] >= u.max) return;
       const cost = this._upCost(k);
       if (this.scrap < cost) {
-        this.toast("not enough scrap (" + cost + ")");
+        this.toast("chatarra insuficiente (" + cost + ")");
         return;
       }
       this.scrap -= cost;
@@ -857,7 +866,7 @@
           a.hp = Math.min(nh, a.hp + Math.max(0, gain));
         }
       }
-      this.toast(u.name + " → level " + this.up[k]);
+      this.toast(u.name + " → nivel " + this.up[k]);
       this._refresh();
       this.save();
     }
@@ -866,17 +875,17 @@
       const n = this.up[k] + 1;
       switch (k) {
         case "gloves":
-          return "click +" + BAL.CLICK * Math.pow(2, n);
+          return "clic +" + BAL.CLICK * Math.pow(2, n);
         case "weapon":
-          return WEAPONS[n].name + " · " + WEAPONS[n].dmg + " dmg";
+          return WEAPONS[n].name + " · " + WEAPONS[n].dmg + " daño";
         case "armor":
-          return "soldier HP " + [40, 70, 120][n];
+          return "PS de soldado " + [40, 70, 120][n];
         case "training":
-          return "+" + 15 * n + "% dmg";
+          return "+" + 15 * n + "% daño";
         case "morale":
-          return "fight to " + Math.round(RETREAT[n] * 100) + "% HP";
+          return "lucha hasta " + Math.round(RETREAT[n] * 100) + "% de PS";
         default:
-          return "block HP ×" + REINF[n];
+          return "PS de estructura ×" + REINF[n];
       }
     }
 
@@ -894,7 +903,7 @@
       this._planNight();
       this.phase = "dusk";
       this.phaseT = 0;
-      this.toast("night " + this.day + " comes…");
+      this.toast("se acerca la noche " + this.day + "…");
       this.save();
     }
 
@@ -983,19 +992,19 @@
       }
       const mod = this._nightMod(this.day + 1);
       this.card = {
-        title: lost ? "night " + this.day + " lost" : "night " + this.day + " survived",
+        title: lost ? "noche " + this.day + " perdida" : "noche " + this.day + " superada",
         lost,
         lines: [
-          "kills " + n.kills + (early && !lost ? " · cleared early" : ""),
-          "blocks lost " + n.blocks + " · soldiers down " + n.down,
-          "scrap " +
+          "bajas " + n.kills + (early && !lost ? " · despejada antes de tiempo" : ""),
+          "estructuras perdidas " + n.blocks + " · soldados caídos " + n.down,
+          "chatarra " +
             (this.scrap - n.scrap0 >= 0 ? "+" : "") +
             Math.round(this.scrap - n.scrap0) +
-            " · food " +
+            " · comida " +
             (this.food - n.food0 >= 0 ? "+" : "") +
             Math.round(this.food - n.food0),
           this._nextUnlock() || "",
-          mod ? "tomorrow: " + mod.name + " (" + mod.desc + ")" : "tomorrow: clear skies",
+          mod ? "mañana: " + mod.name + " (" + mod.desc + ")" : "mañana: cielo despejado",
         ].filter(Boolean),
       };
       this.phase = "dawn";
@@ -1029,7 +1038,7 @@
       this.phaseT = 0;
       this._n = null;
       this._sq = [];
-      this.toast("day " + this.day + " — dig " + this.dig);
+      this.toast("día " + this.day + " — excavar " + this.dig);
       this.save();
     }
 
@@ -1054,7 +1063,7 @@
       let best = null;
       for (const k of BUILD_KINDS)
         if (UNLOCK[k] > this.day && (!best || UNLOCK[k] < UNLOCK[best])) best = k;
-      return best ? "next: " + best + " (day " + UNLOCK[best] + ")" : null;
+      return best ? "siguiente: " + BUILD_LABEL[best] + " (día " + UNLOCK[best] + ")" : null;
     }
 
     /* ---------- save / load ---------- */
@@ -1176,7 +1185,7 @@
           else {
             const dead = B.damage(best, BAL.Z_DMG);
             if (dead) {
-              if (best.kind === "core") this.toast("the core has fallen…");
+              if (best.kind === "core") this.toast("el núcleo ha caído…");
               else if (this.phase === "night" && this._n) this._n.blocks++;
             }
           }
@@ -1477,18 +1486,18 @@
       const ui = document.getElementById("ui");
       if (!ui) return;
       ui.innerHTML =
-        '<div class="pile" id="pile">scrap 0</div>' +
+        '<div class="pile" id="pile">chatarra 0</div>' +
         '<div class="day" id="dayrow"></div>' +
-        '<button id="night">darkness falls ▸</button>' +
-        '<button id="core" title="return the camera to the core">⌂ core</button>' +
-        '<button id="reset" title="wipe the save and start over">↻ start over</button>' +
-        '<div class="lbl">build <span class="keys">b g y v f t w</span></div>' +
+        '<button id="night">cae la oscuridad ▸</button>' +
+        '<button id="core" title="centrar la cámara en el núcleo">⌂ núcleo</button>' +
+        '<button id="reset" title="borrar la partida y empezar de nuevo">↻ empezar de nuevo</button>' +
+        '<div class="lbl">construir <span class="keys">b g y v f t w</span></div>' +
         '<div id="brows"></div>' +
-        '<div class="lbl">upgrades</div>' +
+        '<div class="lbl">mejoras</div>' +
         '<div id="urows"></div>' +
-        '<div class="lbl">dig <span class="keys">1-4</span></div>' +
+        '<div class="lbl">excavar <span class="keys">1-4</span></div>' +
         '<div id="drows"></div>' +
-        '<div class="hint">LMB: dig / place · RMB: dismantle (½ scrap)<br>0 / esc: pan · night: LMB hit walkers (combo)</div>' +
+        '<div class="hint">Clic izq.: excavar / colocar · clic der.: desmontar (½ chatarra)<br>0 / esc: desplazar · noche: clic izq. golpea zombis (combo)</div>' +
         '<div class="toast" id="toast"></div>';
       const brows = ui.querySelector("#brows");
       const drows = ui.querySelector("#drows");
@@ -1497,7 +1506,8 @@
         const d = document.createElement("div");
         d.className = "row";
         d.dataset.kind = k;
-        d.innerHTML = "<span>" + k + "</span><span class='prod'></span><span class='cost'></span>";
+        d.innerHTML =
+          "<span>" + BUILD_LABEL[k] + "</span><span class='prod'></span><span class='cost'></span>";
         d.onclick = () => this._selectTool(k);
         brows.appendChild(d);
         this._brows[k] = d;
@@ -1545,11 +1555,11 @@
           return;
         }
         b.classList.add("warn");
-        b.textContent = "really? click again";
+        b.textContent = "¿seguro? haz clic otra vez";
         clearTimeout(this._resetT);
         this._resetT = setTimeout(() => {
           b.classList.remove("warn");
-          b.textContent = "↻ start over";
+          b.textContent = "↻ empezar de nuevo";
         }, 2500);
       };
       this._el.pile.addEventListener("mousedown", (e) => {
@@ -1563,7 +1573,7 @@
     _refresh() {
       const el = this._el;
       if (!el || !this.tiles) return;
-      el.pile.textContent = "scrap " + Math.floor(this.scrap);
+      el.pile.textContent = "chatarra " + Math.floor(this.scrap);
       if (this.phase !== "day") {
         // night: what was the canvas HUD's stats line (left + countdown)
         // joins kills/down; the weather mod rides along when present
@@ -1572,39 +1582,39 @@
         const s = Math.max(0, Math.ceil(BAL.NIGHT_LEN - this.nightT));
         const mod = this._nightMod(this.day);
         el.dayrow.textContent =
-          "night " +
+          "noche " +
           this.day +
-          " · left " +
+          " · quedan " +
           left +
           " · " +
           Math.floor(s / 60) +
           ":" +
           String(s % 60).padStart(2, "0") +
-          " · kills " +
+          " · bajas " +
           (this._n ? this._n.kills : 0) +
-          " · down " +
+          " · caídos " +
           (this._n ? this._n.down : 0) +
           (mod ? " · " + mod.name : "");
-        el.night.textContent = "night in progress…";
+        el.night.textContent = "noche en curso…";
       } else {
         const tn =
           this.tool === null
-            ? "pan"
+            ? "desplazar"
             : typeof this.tool === "string"
               ? this.tool
               : TOOL_NAME[this.tool];
         el.dayrow.textContent =
-          "day " +
+          "día " +
           this.day +
-          " · dig " +
+          " · excavar " +
           Math.max(0, Math.ceil(this.dig)) +
           " / " +
           this._digMax() +
-          " · food " +
+          " · comida " +
           Math.floor(this.food) +
           " · " +
           tn;
-        el.night.textContent = "darkness falls ▸";
+        el.night.textContent = "cae la oscuridad ▸";
       }
       el.night.disabled = this.phase !== "day";
       for (const k of BUILD_KINDS) {
@@ -1612,16 +1622,16 @@
         const un = UNLOCK[k] && this.day < UNLOCK[k];
         const cost = this._cost(k);
         const costEl = row.querySelector(".cost");
-        costEl.textContent = un ? "day " + UNLOCK[k] : String(cost);
+        costEl.textContent = un ? "día " + UNLOCK[k] : String(cost);
         costEl.className = "cost" + (!un && this.scrap < cost ? " no" : "");
         const cnt = this._count(k);
         row.querySelector(".prod").textContent =
           k === "yard" && cnt > 0
             ? "+" + (BAL.YIELD.yard * cnt).toFixed(1) + "/s"
             : k === "farm" && cnt > 0
-              ? "+" + (BAL.YIELD.farm * cnt).toFixed(1) + " food/s"
+              ? "+" + (BAL.YIELD.farm * cnt).toFixed(1) + " comida/s"
               : k === "barracks" && cnt > 0
-                ? "cap " + this.soldierCap() + " · " + this._soldiers().length
+                ? "límite " + this.soldierCap() + " · " + this._soldiers().length
                 : "";
         row.className = "row" + (un ? " lock" : "") + (this.tool === k ? " on" : "");
       }
@@ -1631,7 +1641,7 @@
         const u = UPG[k],
           row = this._urows[k],
           maxed = this.up[k] >= u.max;
-        row.querySelector(".prod").textContent = maxed ? "max" : this._upLabel(k);
+        row.querySelector(".prod").textContent = maxed ? "máx." : this._upLabel(k);
         const cost = this._upCost(k);
         const costEl = row.querySelector(".cost");
         costEl.textContent = maxed ? "" : String(cost);
@@ -1650,10 +1660,15 @@
     }
 
     _toolName() {
-      if (this.tool === null) return "pan";
+      if (this.tool === null) return "desplazar";
       if (typeof this.tool === "string") {
         const un = UNLOCK[this.tool] && this.day < UNLOCK[this.tool];
-        return this.tool + " (" + (un ? "day " + UNLOCK[this.tool] : this._cost(this.tool)) + ")";
+        return (
+          BUILD_LABEL[this.tool] +
+          " (" +
+          (un ? "día " + UNLOCK[this.tool] : this._cost(this.tool)) +
+          ")"
+        );
       }
       return TOOL_NAME[this.tool];
     }
@@ -1666,24 +1681,24 @@
         hidden: true,
         hint:
           this.phase !== "day"
-            ? "LMB: hit the walkers (fast clicks combo) · drag: pan · wheel: zoom"
-            : "b g y v f t w: build · 1-4: dig · 0/esc: pan · LMB dig/place · RMB dismantle",
+            ? "Clic izq.: golpea a los zombis (los clics rápidos hacen combo) · arrastra: desplaza · rueda: zoom"
+            : "b g y v f t w: construir · 1-4: excavar · 0/esc: desplazar · clic izq. excavar/colocar · clic der. desmontar",
         overlay: () => {
           if (this.card) return { card: this.card };
           if (this.phase === "dusk")
             return {
-              main: "NIGHT " + this.day,
-              sub: mod ? mod.name + " — " + mod.desc : "darkness falls…",
+              main: "NOCHE " + this.day,
+              sub: mod ? mod.name + " — " + mod.desc : "cae la oscuridad…",
               big: true,
             };
           if (this.phase === "night" && this.nightT < 4)
             return {
-              main: "NIGHT " + this.day,
+              main: "NOCHE " + this.day,
               sub: mod ? mod.name : "",
               fade: 1 - this.nightT / 4,
             };
           if (this.phase === "dawn")
-            return { main: "dawn", sub: "day " + (this.day + 1) + " — dig refreshed" };
+            return { main: "amanecer", sub: "día " + (this.day + 1) + " — excavación renovada" };
           return null;
         },
       };

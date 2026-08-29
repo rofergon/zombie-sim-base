@@ -1,9 +1,10 @@
 # AGENTS.md — The Outbreak (sketch zombie sim)
 
-A hand-drawn, "boiling line" sketch-style sim. Three HTML pages share one
+A hand-drawn, "boiling line" sketch-style sim. Four HTML pages share one
 core: `index.html` (the outbreak, a zombie horde in a paper town),
 `battle.html` (Cannae, 216 BC, 781-figure battle), and `hold.html` (The
-Hold, a tile-based zombie clicker — design in HOLD-DESIGN.md). Vanilla JS,
+Hold, a tile-based zombie clicker — design in HOLD-DESIGN.md), and `zone.html`
+(The Zone, a colony-survival RTS — design in ZONE-DESIGN.md). Vanilla JS,
 Canvas 2D. No framework, no build step, no bundler — and it must stay that
 way (see Hard constraints).
 
@@ -38,27 +39,33 @@ scripts are dev tooling only (format/lint).
 
 Two layers, one contract between them:
 
-index.html / battle.html / hold.html  (same load order, page var line differs)
+index.html / battle.html / hold.html / zone.html (same core order, scenario additions differ)
 └── <script> load order (matters):
-    <script>var ZS_SCEN = "ScenarioCannae";</script>   ← battle.html only
-    <script>var ZS_WW=1600; var ZS_WH=1200; var ZS_SCEN="ScenarioHold";</script> ← hold.html only
-    js/sketch.js        style primitives (boil, wline, wcirc, wpoly, lerpC…)
-    js/grid.js          spatial hash
-    js/nav.js           A* pathfinding + walkability mask
-    js/camera.js        pan/zoom/pinch camera, clamped to the world
-    js/world.js         paper world (3200×2400 default; a page may set
-                        ZS_WW/ZS_WH before the tags), water, forest, pre-render
-    js/buildings.js     procedural town (rooms, doors, occupancy)
-    js/stains.js        generic persistent-stamp layer (splats, corpses)
-    js/tiles.js         optional square ground grid (the Hold): nav marking + sketch render
-    js/agents.js        generic entity engine (AI pass, separation, clamp)
-    js/sim.js           game clock (rounds, reinforcements, tap)
-    js/scenarios/zombie.js | cannae.js | hold.js   the SCENARIO PACK (contract below)
-    js/draw.js          scene + HUD pipeline (calls back into the scenario)
-    js/sound.js         WebAudio cues (sketch-quiet blips/booms + the formant
-                        voice lines; unlocks on first pointerdown; the scenario
-                        names the events)
-    js/main.js          bootstrap: world, camera, input, main loop
+<script>var ZS_SCEN = "ScenarioCannae";</script> ← battle.html only
+<script>var ZS_WW=1600; var ZS_WH=1200; var ZS_SCEN="ScenarioHold";</script> ← hold.html only
+js/sketch.js style primitives (boil, wline, wcirc, wpoly, lerpC…)
+js/grid.js spatial hash
+js/nav.js A* pathfinding + walkability mask
+js/camera.js pan/zoom/pinch camera, clamped to the world
+js/world.js paper world (3200×2400 default; a page may set
+ZS_WW/ZS_WH before the tags), water, forest, pre-render
+js/buildings.js procedural town (rooms, doors, occupancy)
+js/stains.js generic persistent-stamp layer (splats, corpses)
+js/tiles.js optional square ground grid (the Hold): nav marking + sketch render
+js/agents.js generic entity engine (AI pass, separation, clamp)
+js/sim.js game clock (rounds, reinforcements, tap)
+js/scenarios/zombie.js | cannae.js | hold.js | zone.js the SCENARIO PACK (contract below)
+js/draw.js scene + HUD pipeline (calls back into the scenario)
+js/sound.js WebAudio cues (sketch-quiet blips/booms + the formant
+voice lines; unlocks on first pointerdown; the scenario
+names the events)
+js/main.js bootstrap: world, camera, input, main loop
+
+`zone.html` additionally loads
+`js/zone/{config,state,map,orders,citizens,tasks,squads,scavenge,ui}.js` and
+`js/scenarios/zone.js`. It loads the zombie scenario class as a drawing
+dependency so Zone people and encounter infected call the frozen
+`ScenarioZombie.draw` directly.
 
 **The core (`js/*.js`) knows nothing about zombies.** It runs the clock,
 physics, spacing, navigation, camera, and rendering pipeline, and calls the
@@ -73,6 +80,8 @@ out. A different scenario is a copy of a scenario pack plus a page that sets
 
 1. `ZS.setBoil(t)` — advances the boil timer (line jitter epoch)
 2. `ZS.Sim.update(dt, t, world, W, H)`:
+   - scenarios with `usesTimeScale` opt into fixed steps of at most 50 ms;
+     `timeScale` 0 pauses and 1/2/4 advances at the requested rate
    - if `scenario.left(agents) === 0` → after the town-fall beat
      (`scenario.beatT || 3` seconds, or immediately if the scenario sets
      `skipBeat`, consumed on the `wave++`), `wave++` and
@@ -84,7 +93,7 @@ out. A different scenario is a copy of a scenario pack plus a page that sets
         (panic-by-voice propagation in the zombie pack)
      3. **two AI passes**: `scenario.hostile(a)` agents first (they get the
         A* budget), then the rest — each via `scenario.update(a, dt, t, grid,
-        nav, world, buildings, wave)`
+nav, world, buildings, wave)`
      4. door-shake + transient-fx decay
      5. **separation**: every unordered pair within `SEP_R` (18 px, or the
         scenario's optional `sepR` property — dense battle formations sit at
@@ -94,73 +103,76 @@ out. A different scenario is a copy of a scenario pack plus a page that sets
         unless the scenario sets `swim`), page margins, `scenario.maxSpeed(a)`
         cap (× `SWIM_FRAC` 0.25 while in water for swim-capable scenarios),
         integrate, stuck-timer, building occupancy (the `inCount`/`survCount`
-        resets happen *after* the AI pass — the pass reads the previous
+        resets happen _after_ the AI pass — the pass reads the previous
         frame's tallies, never zeroes; the refill happens during
         integration)
      7. dead / off-field compaction (dead or `a.gone` agents leave the array)
 3. `ZS.drawScene(...)`: pre-rendered paper background → water → the
    scenario's `drawGround` pass (the Hold's tile washes) → stains →
-   y-sorted trees/buildings/agents (`scenario.draw` per agent) →
-   `scenario.drawFX` → speech bubbles → HUD from `scenario.hud(agents,
-   wave)`. The scene list is culled to the camera, so **fps scales with how
+   y-sorted trees/buildings/agents (`scenario.draw` per agent) → optional
+   `scenario.drawOverlay` → `scenario.drawFX` → speech bubbles → HUD from `scenario.hud(agents,
+wave)`. The scene list is culled to the camera, so **fps scales with how
    much world is visible** (fit view = whole world ≈ 40–50 fps; zoomed ≈
    display refresh).
 
 ### Core `ZS` surface
 
-| export | what it is |
-|---|---|
-| `ZS.rnd, ZS.clamp, ZS.rng32, ZS.hash` | random/util (hash is deterministic) |
-| `ZS.setBoil, ZS.jit, ZS.sjit` | boil epoch + per-seed jitter |
-| `ZS.wline, ZS.wcirc, ZS.wpoly, ZS.sketchRect, ZS.lerpC` | sketch drawing |
-| `ZS.Grid` | spatial hash (insert/query) |
-| `ZS.Nav` | `isWalkable(x,y,isZ)`, `isWater(x,y)`, `astar(x1,y1,x2,y2,isZ,maxExpand,swim)`, `los(x1,y1,x2,y2,isZ,swim)`, `nearestWalkable`, `randLand`, `inForest`; `version` bumps when the map changes. The `swim` flag (from the scenario's `swim` property) makes water cells passable at 4x cost — the swim is taken only when it beats the detour; without it water is a hard block. `los` intermediate cells carry the ray's own mask (a zombie-side ray stops at intact doors/walls); the *endpoint* tests the human mask, so a ray that reaches a floor/door/land point is sightable from every side (broken doors pass both) |
-| `ZS.World` | terrain, water, forest, pre-rendered paper, `trees`, `buildings`, `stains` |
-| `ZS.Buildings` | town generator + `cellBldAt` occupancy lookup |
-| `ZS.Stains` | persistent stamp canvas; `register(kind, painter)`, `splat`, `corpse`, `fillBlob` |
-| `ZS.Tiles` | optional square ground grid (`set`, `stroke`, `drawAll`); water tiles hard-block the nav grid |
-| `ZS.makeAgent` | core alias → `scenario.makeAgent` |
-| `ZS.updateAgents` | the core per-frame entity pipeline (above) |
-| `ZS.fx` | transient effect records (`{t}` — core decays/prunes) |
-| `ZS.planAndFollow, ZS.wander, ZS.wanderTarget` | movement helpers for scenarios (A*-bounded steering) |
-| `ZS.Camera` | `fit`, `zoom`, `x/y`, `clamp`, `toWorld`, `autoSeek(x, y, z, dt, vw, vh, ease)` — exponential chase, `ease` a time constant in seconds (default 0.7; the zombie pack passes its own) |
-| `ZS.Sim` | `agents`, `wave`, `init`, `counts`, `update`, `tap` |
-| `ZS.sound` | `event(name, x, y)`, `tick(dt)`, `unlocked` — WebAudio cues (no assets), spatialized against the camera, per-name cooldowns, unlocked on first pointerdown; event names owned by the scenario (zombie map: `shot_rifle/shot_shotgun/shot_smg/shot_gren/boom/moan/door_break/fire/turret/horn` + the formant voice lines `v_shout/v_gasp/v_mumble/v_laugh/v_grunt/v_callout/v_groan/v_growl/v_chomp/v_mama/v_spit/v_zedshout` — moving F1/F2/F3 bandpasses over a detuned double-saw glottis, ported 1:1 from `.verify/voices.html`; `moan` picks a random dark zombie line; `boom` is a full phrase: soft-clipped shock crack, falling bandpass body, saw sub, resonant rumble tail, debris, distant echo) |
-| `ZS.drawScene` | the render pipeline |
-| `ZS.scenario` | the live scenario pack instance |
-| `ZS.debug` | `{ cam, world, nav, buildings, scenario }` — verification + future player/vehicle hook |
+| export                                                  | what it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ZS.rnd, ZS.clamp, ZS.rng32, ZS.hash`                   | random/util (hash is deterministic)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `ZS.setBoil, ZS.jit, ZS.sjit`                           | boil epoch + per-seed jitter                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ZS.wline, ZS.wcirc, ZS.wpoly, ZS.sketchRect, ZS.lerpC` | sketch drawing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ZS.Grid`                                               | spatial hash (insert/query)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `ZS.Nav`                                                | `isWalkable(x,y,isZ)`, `isWater(x,y)`, `astar(x1,y1,x2,y2,isZ,maxExpand,swim)`, `los(x1,y1,x2,y2,isZ,swim)`, `nearestWalkable`, `randLand`, `inForest`; `version` bumps when the map changes. The `swim` flag (from the scenario's `swim` property) makes water cells passable at 4x cost — the swim is taken only when it beats the detour; without it water is a hard block. `los` intermediate cells carry the ray's own mask (a zombie-side ray stops at intact doors/walls); the _endpoint_ tests the human mask, so a ray that reaches a floor/door/land point is sightable from every side (broken doors pass both)                                                                                 |
+| `ZS.World`                                              | terrain, water, forest, pre-rendered paper, `trees`, `buildings`, `stains`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ZS.Buildings`                                          | town generator + `cellBldAt` occupancy lookup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ZS.Stains`                                             | persistent stamp canvas; `register(kind, painter)`, `splat`, `corpse`, `fillBlob`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `ZS.Tiles`                                              | optional square ground grid (`set`, `stroke`, `drawAll`); water tiles hard-block the nav grid                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `ZS.makeAgent`                                          | core alias → `scenario.makeAgent`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `ZS.updateAgents`                                       | the core per-frame entity pipeline (above)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `ZS.fx`                                                 | transient effect records (`{t}` — core decays/prunes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `ZS.planAndFollow, ZS.wander, ZS.wanderTarget`          | movement helpers for scenarios (A*-bounded steering)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ZS.Camera`                                             | `fit`, `zoom`, `x/y`, `clamp`, `toWorld`, `autoSeek(x, y, z, dt, vw, vh, ease)` — exponential chase, `ease` a time constant in seconds (default 0.7; the zombie pack passes its own)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ZS.Sim`                                                | `agents`, `wave`, `init`, `counts`, `update`, `tap`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `ZS.sound`                                              | `event(name, x, y)`, `tick(dt)`, `unlocked` — WebAudio cues (no assets), spatialized against the camera, per-name cooldowns, unlocked on first pointerdown; event names owned by the scenario (zombie map: `shot_rifle/shot_shotgun/shot_smg/shot_gren/boom/moan/door_break/fire/turret/horn` + the formant voice lines `v_shout/v_gasp/v_mumble/v_laugh/v_grunt/v_callout/v_groan/v_growl/v_chomp/v_mama/v_spit/v_zedshout` — moving F1/F2/F3 bandpasses over a detuned double-saw glottis, ported 1:1 from `.verify/voices.html`; `moan` picks a random dark zombie line; `boom` is a full phrase: soft-clipped shock crack, falling bandpass body, saw sub, resonant rumble tail, debris, distant echo) |
+| `ZS.drawScene`                                          | the render pipeline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `ZS.scenario`                                           | the live scenario pack instance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ZS.debug`                                              | `{ cam, world, nav, buildings, scenario }` — verification + future player/vehicle hook                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## The scenario contract
 
 `ScenarioZombie` implements this surface (signatures verified in
 `js/scenarios/zombie.js`; the file's header block is the canonical list):
 
-| method | role |
-|---|---|
-| `attachStains(st)` | register splat/corpse painters (`st.register(kind, painter)`) |
-| `terrain(world, nav)` | optional: lay your own battlefield instead of the random town (skips water/forest/town/trees); the Hold builds its tile grid here |
-| `drawGround(c, world, t)` | optional: per-frame ground pass after water, before everything with height (the Hold's tile render) |
-| `pointerDown/Move/Up(x, y)` | optional: claim a pointer gesture (true from `pointerDown` = the camera never pans for that pointer); the Hold's dig-drag |
-| `makeAgent(x, y, st, extra)` | the agent record (core fields + scenario fields) |
-| `hostile(a)` | true → AI updated first (A* budget priority) |
-| `walkBlocked(a)` | true → building interiors/doors are solid for this agent |
-| `maxSpeed(a)` | per-agent speed cap |
-| `sepR` (property, optional) | this pack's separation radius (cannae: 13, packed ranks) |
-| `swim` (property, optional) | true → water is a soft block: A* crosses river/lake/pond when the swim (4x cell cost) beats the detour, LOS sees across it, and in-water speed is capped at `SWIM_FRAC` 0.25 of `maxSpeed` (zombie pack only; cannae/hold stay hard-blocked — Hold's dug moats use tile water, which never enters the water mask) |
-| `beatT` (property, optional) | town-fall beat in seconds (zombie: 4.5 — the dawn report card holds it up); core defaults to 3 |
-| `skipBeat` (property) | set true to dismiss the town-fall beat early (consumed on the `wave++`); the zombie pack's tap on the dawn card |
-| `paused` (property) | true → `Sim.update` returns early: the world waits (the Hold's results card; probe scripts use it to freeze the sim for deterministic camera tests) |
-| `frame(agents, dt, t, grid, nav)` | once per frame, before the AI pass |
-| `update(a, dt, t, grid, nav, world, buildings, wave)` | per-agent AI |
-| `init(agents, world, vw, vh, wave)` | start a round (fills the array) |
-| `maintain(agents, dt, world, vw, vh)` | between rounds (reinforcements) |
-| `left(agents)` | "players" still standing; 0 → new round |
-| `counts(agents)` | HUD stats (`surv, zomb, shel, guard`) |
-| `tap(agents, world, x, y)` | what a pointer tap does (zombie: calls a sky-fall artillery strike, 8 s cooldown; while the town has fallen it dismisses the dawn card via `skipBeat`) |
-| `hud(agents, wave)` | `{ title, stats, hint, legend(c, y, fs, vw, vh), overlay() }` — `vw`/`vh` optional (the zombie pack uses them for the threat arrow); `overlay()` may return `{ card }` for a sketched results card |
-| `draw(c, a, t)` | one agent, all of it (frozen look) |
-| `drawFX(c, fx)` | render transient effect records |
-| `camInterest(dt)` | optional (CONTRACT B): what the auto-camera watches — `main.js` calls it every frame when defined and feeds `Camera.autoSeek`; return a `{x, y, zoom, ease?}` record (the zombie pack reuses a module-level `CI` record — no per-frame allocs) or null to hold still; the zombie pack eases a focal point to the heat-weighted centroid of hot zones (`h > 10`), zooms by their spread (1.45 / 1.15 / 0.95) and pulses on booms/grenades; drag, pinch or wheel input hands the camera back for the session — a tap doesn't (it's an action: sound unlock, the artillery call) |
+| method                                                | role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attachStains(st)`                                    | register splat/corpse painters (`st.register(kind, painter)`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `terrain(world, nav)`                                 | optional: lay your own battlefield instead of the random town (skips water/forest/town/trees); the Hold builds its tile grid here                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `drawGround(c, world, t)`                             | optional: per-frame ground pass after water, before everything with height (the Hold's tile render)                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `pointerDown/Move/Up(x, y)`                           | optional: claim a pointer gesture (true from `pointerDown` = the camera never pans for that pointer); the Hold's dig-drag                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `makeAgent(x, y, st, extra)`                          | the agent record (core fields + scenario fields)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `hostile(a)`                                          | true → AI updated first (A* budget priority)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `walkBlocked(a)`                                      | true → building interiors/doors are solid for this agent                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `maxSpeed(a)`                                         | per-agent speed cap                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `sepR` (property, optional)                           | this pack's separation radius (cannae: 13, packed ranks)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `swim` (property, optional)                           | true → water is a soft block: A* crosses river/lake/pond when the swim (4x cell cost) beats the detour, LOS sees across it, and in-water speed is capped at `SWIM_FRAC` 0.25 of `maxSpeed` (zombie pack only; cannae/hold stay hard-blocked — Hold's dug moats use tile water, which never enters the water mask)                                                                                                                                                                                                                                                             |
+| `beatT` (property, optional)                          | town-fall beat in seconds (zombie: 4.5 — the dawn report card holds it up); core defaults to 3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `skipBeat` (property)                                 | set true to dismiss the town-fall beat early (consumed on the `wave++`); the zombie pack's tap on the dawn card                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `paused` (property)                                   | true → `Sim.update` returns early: the world waits (the Hold's results card; probe scripts use it to freeze the sim for deterministic camera tests)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `usesTimeScale` / `timeScale` (properties, optional)  | opt into fixed-step speed control; 0 pauses and positive values scale simulation time without changing render/boil time (the Zone)                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `frame(agents, dt, t, grid, nav)`                     | once per frame, before the AI pass                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `update(a, dt, t, grid, nav, world, buildings, wave)` | per-agent AI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `init(agents, world, vw, vh, wave)`                   | start a round (fills the array)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `maintain(agents, dt, world, vw, vh)`                 | between rounds (reinforcements)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `left(agents)`                                        | "players" still standing; 0 → new round                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `counts(agents)`                                      | HUD stats (`surv, zomb, shel, guard`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `tap(agents, world, x, y)`                            | what a pointer tap does (zombie: calls a sky-fall artillery strike, 8 s cooldown; while the town has fallen it dismisses the dawn card via `skipBeat`)                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `hud(agents, wave)`                                   | `{ title, stats, hint, legend(c, y, fs, vw, vh), overlay() }` — `vw`/`vh` optional (the zombie pack uses them for the threat arrow); `overlay()` may return `{ card }` for a sketched results card                                                                                                                                                                                                                                                                                                                                                                            |
+| `draw(c, a, t)`                                       | one agent, all of it (frozen look)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `drawBuildingOverlay(c, building, t)`                 | optional: decorate a generic town building immediately after its normal sketch render (the Zone's selection/HQ flag)                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `drawOverlay(c, t)`                                   | optional: render persistent world-space overlays above actors (the Zone's selected squad routes and drag marquee)                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `drawFX(c, fx)`                                       | render transient effect records                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `camInterest(dt)`                                     | optional (CONTRACT B): what the auto-camera watches — `main.js` calls it every frame when defined and feeds `Camera.autoSeek`; return a `{x, y, zoom, ease?}` record (the zombie pack reuses a module-level `CI` record — no per-frame allocs) or null to hold still; the zombie pack eases a focal point to the heat-weighted centroid of hot zones (`h > 10`), zooms by their spread (1.45 / 1.15 / 0.95) and pulses on booms/grenades; drag, pinch or wheel input hands the camera back for the session — a tap doesn't (it's an action: sound unlock, the artillery call) |
 
 **Core-owned agent fields** (don't clobber): `x y vx vy a st seed gait id
 wantMove dead free gone path pi gx gy navV0 planFailT stuckT wx wt px py bld`,
@@ -222,7 +234,7 @@ pack shapes: tracer `{x0,y0,x1,y1,t}`, poof `{x,y,t,poof,seed}`, blood
   size, shortens the spawn cadence, fires a once-per-wave **surge** at the
   weakest post after 60 s (`PACK_CAP + wave`, capped 22), and doubles pack
   spawns after 120 s. Horde size stays defense-dependent by design; the
-  *pressure* escalates.
+  _pressure_ escalates.
 - **Fire respects walls**: every ignition path — the ground-fire tuft loop
   in `frame()`, burning-contact spread (`_updateBurning`), and the blast
   (`_boom`) — is gated on `nav.los(source, target, true)`. Walls and intact
@@ -280,6 +292,52 @@ Engine hooks the Hold needed (all opt-in, no-ops for the other pages):
 pointer hooks (contract table above), and null-water guards in
 `world.build()` / `drawWater` (tile worlds have no river or lake).
 
+## Zone pack (`js/scenarios/zone.js`, design in `ZONE-DESIGN.md`)
+
+The colony-survival mode has shipped phases 0–5: a dense seeded paper town,
+player-chosen HQ, persistent citizens and settlement stock, salvage workers,
+controllable squads, patrol, deterministic POIs/loot, and limited scavenging
+encounters, followed by adapted buildings, research, power, staffed production
+and global night defense. The initial population is 16 (four in the first squad
+and twelve workers). Vehicles, trade, factions, laws and OSM remain later work.
+
+- **Save schema**: `SAVE_VERSION = 7`. Pure migrations add phase-2 data in
+  v3 → v4, phase-3 data in v4 → v5, phase-4 data in v5 → v6 and phase-5 data
+  in v6 → v7. `ZoneSave.normalize` is the only legacy or corrupt-data boundary;
+  gameplay only reads v7.
+- **Citizens** (`js/zone/citizens.js`): stable numeric IDs, HP, morale, hunger,
+  role, work state, assignment, cargo and squad membership. Dusk/night returns
+  non-critical workers to HQ; resting recovers morale.
+- **Jobs** (`js/zone/tasks.js`): the board is dirty/event-driven, plus a
+  low-frequency safety reconciliation. Workers never scan every task per
+  frame. Salvage caches and carried loads are finite and conserved through
+  cancellation, replacement and save/load.
+- **Squads** (`js/zone/squads.js`): at most four citizens, one order queue and
+  one leader A* path. Followers use preallocated formation targets/a leader
+  trail, with a safe nearest-walkable recovery only when badly separated.
+  MOVE=1 and ENTER=2 remain unchanged; SCAVENGE, PATROL and RETURN_HQ append to
+  those IDs. Area-scavenge commands distribute unique buildings across selected
+  squads; an automatic HQ deposit replaces only the active order so the rest of
+  the route persists and resumes after restocking.
+- **Scavenging** (`js/zone/scavenge.js`): POI, loot and hidden infected derive
+  once from `world.seed + building.id`. Hidden threats stay abstract until
+  reveal. Remaining encounter count is authoritative in saves; materialization
+  is once per runtime. Full inventory returns to HQ, deposits, restocks and
+  resumes unfinished loot.
+- **Adaptation** (`js/zone/adaptations.js`): cleared buildings reserve finite
+  construction materials, then workers adapt them. Stable research unlocks,
+  deterministic power allocation, staffed farms/workshops, cookhouse food
+  efficiency, medical healing and repairs stay scenario-owned.
+- **Night defense** (`js/zone/defense.js`): one deterministic edge wave per
+  night recalls and restocks squads, targets citizens or persistent structures,
+  and ends in a dawn report. Saves keep abstract unspawned/living counts rather
+  than transient horde agents.
+- **Resource invariant**: stock + worker cargo + squad inventories + building
+  caches changes only through explicit food, ammunition or medicine use.
+- **Verification**: `tests/zone-workers.js`, `tests/zone-squads.js` and
+  `tests/zone-colony.js` extend the four-page smoke and phase-0/1 regression
+  suites, always through `file://`.
+
 ## Style system (`js/sketch.js`)
 
 - **Boil**: `ZS.setBoil(t)` sets the epoch; `ZS.jit(seed)` / `ZS.sjit(seed)`
@@ -296,7 +354,7 @@ pointer hooks (contract table above), and null-water guards in
 ## Tooling & verification (how we work)
 
 - **Format/lint** (Oxc): `npm run format` / `npm run lint` (or `npx oxfmt
-  js/` / `npx oxlint js/` in an interactive terminal). From non-TTY
+js/` / `npx oxlint js/` in an interactive terminal). From non-TTY
   automation, run the local bins directly — `npx` can hang without a TTY:
   `node node_modules/oxfmt/bin/oxfmt js/` and
   `node node_modules/oxlint/bin/oxlint js/` (stdin detached). No config
@@ -321,11 +379,11 @@ pointer hooks (contract table above), and null-water guards in
   to diff behavior; delete it once the split is battle-tested.
 - **Fidelity-check pattern** (for any future port/move of code): strip
   comments, whitespace, and trailing commas from both sides, extract the
-  moved body, apply a map of the *intended* renames, and assert the old body
+  moved body, apply a map of the _intended_ renames, and assert the old body
   is a substring of the new file. `.verify/split-check.js` is a working
   example.
 - **Page-side inspection**: `ZS.debug` exposes `{ cam, world, nav,
-  buildings, scenario }` — use it in `page.evaluate` for counts, camera
+buildings, scenario }` — use it in `page.evaluate` for counts, camera
   state, and custom audits.
 
 ## Change recipes

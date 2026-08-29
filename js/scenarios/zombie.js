@@ -48,130 +48,130 @@
   // HEAR_R even when no zombie is in sight, and they run for the doors
   const PHRASES = {
     panic: [
-      "run!",
-      "over there!",
-      "get inside!",
-      "behind you!",
-      "they're coming!",
-      "into the house!",
-      "it's out there!",
-      "don't move!",
-      "get in the store!",
-      "help!",
-      "they're in the street!",
-      "don't let them through!",
-      "someone grab a board!",
-      "we've got to move!",
+      "¡corre!",
+      "¡por ahí!",
+      "¡entra!",
+      "¡detrás de ti!",
+      "¡vienen!",
+      "¡a la casa!",
+      "¡está ahí fuera!",
+      "¡no te muevas!",
+      "¡entra en la tienda!",
+      "¡ayuda!",
+      "¡están en la calle!",
+      "¡no los dejen pasar!",
+      "¡que alguien agarre una tabla!",
+      "¡tenemos que movernos!",
     ],
     alarm: [
-      "i can hear them!",
-      "shut the shutters!",
-      "the doors are rattling!",
-      "it's getting closer!",
-      "we're not safe here!",
-      "somebody's screaming down the block!",
-      "lock the back door!",
-      "they're at the fence!",
-      "stay inside, i'm watching!",
-      "i don't like this quiet...",
+      "¡puedo oírlos!",
+      "¡cierra las contraventanas!",
+      "¡las puertas están temblando!",
+      "¡se acercan!",
+      "¡aquí no estamos a salvo!",
+      "¡alguien grita calle abajo!",
+      "¡cierra la puerta trasera!",
+      "¡están en la valla!",
+      "¡quédate dentro, yo vigilo!",
+      "no me gusta este silencio...",
     ],
     door: [
-      "they're at the door!",
-      "the door's not holding!",
-      "brace the door!",
-      "something's chewing through it!",
-      "that door will not hold!",
-      "back it up with the counter!",
-      "i'm on the door!",
-      "nail it shut!",
+      "¡están en la puerta!",
+      "¡la puerta no aguanta!",
+      "¡refuerza la puerta!",
+      "¡algo la está mordiendo!",
+      "¡esa puerta no resistirá!",
+      "¡atráncala con el mostrador!",
+      "¡yo me encargo de la puerta!",
+      "¡clávala!",
     ],
     gun: [
-      "hold the line!",
-      "stay down!",
-      "get back!",
-      "it's mine!",
-      "cover!",
-      "right there!",
-      "no closer!",
-      "for the town!",
-      "i got one!",
-      "fire on my mark!",
-      "they keep coming!",
-      "watch your six!",
+      "¡mantengan la línea!",
+      "¡agáchense!",
+      "¡retrocedan!",
+      "¡ese es mío!",
+      "¡cúbreme!",
+      "¡justo ahí!",
+      "¡ni un paso más!",
+      "¡por el pueblo!",
+      "¡tengo uno!",
+      "¡fuego a mi señal!",
+      "¡siguen viniendo!",
+      "¡vigila tu espalda!",
     ],
     grenade: [
-      "grenade out!",
-      "get clear!",
-      "for the love of god, move!",
-      "mark the cluster!",
-      "that was a big one!",
+      "¡granada!",
+      "¡despejen la zona!",
+      "¡por Dios, muévanse!",
+      "¡marca el grupo!",
+      "¡esa ha sido grande!",
     ],
     fire: [
-      "fire!",
-      "it's on fire!",
-      "oh god, it's on me!",
-      "burning!",
-      "get out of the smoke!",
-      "water, somebody!",
+      "¡fuego!",
+      "¡está ardiendo!",
+      "¡Dios, me ha alcanzado!",
+      "¡me quemo!",
+      "¡salgan del humo!",
+      "¡agua, que alguien traiga agua!",
     ],
     fallback: [
-      "fall back! to the house!",
-      "the line's broken, move in!",
-      "pull back! stay together!",
-      "keep firing, keep moving back!",
-      "back to the second wall!",
+      "¡retirada! ¡a la casa!",
+      "¡la línea se rompió, avancen!",
+      "¡retrocedan! ¡manténganse juntos!",
+      "¡sigan disparando, sigan retrocediendo!",
+      "¡a la segunda muralla!",
     ],
     reform: [
-      "hold! we've got it!",
-      "steady, everyone!",
-      "the line's back up!",
-      "breathe — they pulled off!",
-      "good fighting, hold it!",
+      "¡aguanten, lo tenemos!",
+      "¡calma, todos!",
+      "¡la línea vuelve a estar firme!",
+      "respiren; ¡se retiraron!",
+      "¡buen trabajo, mantengan la posición!",
     ],
     recruit: [
-      "i've got one!",
-      "picked up a rifle!",
-      "we're arming up!",
-      "stand with us, you'll live longer!",
-      "here, hold this!",
-      "we need every pair of hands!",
-      "stay back from the front!",
+      "¡tengo uno!",
+      "¡he encontrado un rifle!",
+      "¡nos estamos armando!",
+      "¡únete a nosotros, vivirás más!",
+      "¡toma, sujeta esto!",
+      "¡necesitamos todas las manos!",
+      "¡aléjate del frente!",
     ],
     wounded: [
-      "i'm hit! i'm hit!",
-      "cover me, i'm bleeding out!",
-      "the door's close, i can make it!",
-      "don't stop firing!",
-      "i can't hold this!",
-      "someone help me up!",
+      "¡me han dado! ¡me han dado!",
+      "¡cúbreme, me estoy desangrando!",
+      "¡la puerta está cerca, llegaré!",
+      "¡no dejen de disparar!",
+      "¡no puedo aguantar esto!",
+      "¡que alguien me ayude a levantarme!",
     ],
     infected: [
-      "oh no... it bit me!",
-      "my hand... it's cold!",
-      "don't let me in there!",
-      "it's in me, i can feel it!",
-      "stay away from me!",
+      "¡no... me ha mordido!",
+      "mi mano... está fría!",
+      "¡no me dejen entrar!",
+      "¡está dentro, puedo sentirlo!",
+      "¡aléjense de mí!",
     ],
     "turret-down": [
-      "the gun's down! it's down!",
-      "lose the emplacement!",
-      "someone hold that gap!",
-      "the turret's gone!",
+      "¡el cañón cayó! ¡cayó!",
+      "¡perdimos la posición!",
+      "¡que alguien cubra ese hueco!",
+      "¡la torreta ha caído!",
     ],
   };
   const HEARD = [
-    "what?!",
-    "where?!",
-    "i saw one!",
-    "oh no...",
-    "who's there?!",
-    "keep your voice down!",
-    "is that the horde?!",
-    "where did you see them?!",
-    "we should move!",
-    "don't come out!",
-    "i hear nothing...",
-    "that's not good.",
+    "¿qué?!",
+    "¿dónde?!",
+    "¡he visto uno!",
+    "no...",
+    "¿quién anda ahí?!",
+    "¡habla más bajo!",
+    "¿esa es la horda?!",
+    "¿dónde los viste?!",
+    "¡deberíamos movernos!",
+    "¡no salgas!",
+    "no oigo nada...",
+    "eso no es bueno.",
   ];
   // personalities: deterministic from each agent's seed — a few of the
   // town are brave, most are steady, some cautious, some panicked, and a
@@ -179,37 +179,41 @@
   const PERS = [
     {
       // FIGHTER
-      panic: ["on 'em!", "come and get me!", "i've got the corner!", "they won't get past me!"],
-      gun: ["i've got it!", "bring 'em!", "that's my range!", "right through the chest!"],
-      fallback: ["we fall back! but only this far!", "hold the gap, i'm coming!"],
-      recruit: ["finally, some sense!", "get behind me, watch and learn!"],
-      wounded: ["i'm still standing!", "don't waste me, keep firing!"],
+      panic: ["¡venid!", "¡ven a por mí!", "¡yo cubro la esquina!", "¡no pasarán de mí!"],
+      gun: ["¡lo tengo!", "¡venid!", "¡estáis a mi alcance!", "¡directo al pecho!"],
+      fallback: ["¡retrocedemos, pero solo hasta aquí!", "¡cubre el hueco, voy!"],
+      recruit: ["¡por fin, algo de sentido común!", "¡ponte detrás de mí y aprende!"],
+      wounded: ["¡sigo en pie!", "¡no me desperdicies, sigue disparando!"],
     },
     {
       // STEADY
-      panic: ["stay with me, stay calm!", "one at a time, we've got this!"],
-      gun: ["steady... steady...", "breathe. aim. fire."],
-      door: ["i'll hold the door.", "we've got the door."],
-      fallback: ["fall back, orderly."],
+      panic: ["¡quédate conmigo, mantén la calma!", "¡de uno en uno, podemos!"],
+      gun: ["despacio... despacio...", "respira. apunta. dispara."],
+      door: ["yo aguanto la puerta.", "tenemos la puerta."],
+      fallback: ["retrocedan, en orden."],
     },
     {
       // CAUTIOUS
-      panic: ["we should have moved already...", "i told you, i told you all!"],
-      gun: ["i don't like being out here...", "my hands are shaking!"],
-      wounded: ["i don't think i can make it..."],
+      panic: ["deberíamos habernos movido ya...", "¡os lo dije, os lo dije!"],
+      gun: ["no me gusta estar aquí fuera...", "¡me tiemblan las manos!"],
+      wounded: ["no creo que pueda conseguirlo..."],
     },
     {
       // PANICKED
-      panic: ["no no no no no!", "get me out of here! GET ME OUT!", "they're everywhere, oh god!"],
-      gun: ["i'm sorry, i'm sorry!", "shoot them, shoot them all!"],
-      wounded: ["it hurts, it hurts so much!"],
-      infected: ["it's in me, it's in me!"],
+      panic: [
+        "¡no, no, no, no, no!",
+        "¡sácame de aquí! ¡SÁCAME!",
+        "¡están por todas partes, Dios!",
+      ],
+      gun: ["¡lo siento, lo siento!", "¡disparadles, disparadles a todos!"],
+      wounded: ["¡duele, duele muchísimo!"],
+      infected: ["¡está dentro de mí, está dentro de mí!"],
     },
     {
       // STOIC
       panic: ["hmm.", "..."],
       gun: ["mm.", "ah."],
-      door: ["the door, then.", "doors break."],
+      door: ["la puerta, entonces.", "las puertas se rompen."],
     },
   ];
   const HEAR_R = 260; // how far a shout carries
@@ -1403,10 +1407,18 @@
       if (si >= 0 && this.towns) d = this.towns[this.sq[si].di];
       if (!d && this.towns && this.towns.length)
         d = this.towns[(this.wave * 7) % this.towns.length];
-      if (!d) return "the hills";
+      if (!d) return "las colinas";
       const n = d.y < this.coreY ? "north" : "south";
       const e = d.x < this.coreX ? "west" : "east";
-      return "the " + n + " " + e;
+      const dir =
+        n === "north"
+          ? e === "west"
+            ? "noroeste"
+            : "noreste"
+          : e === "west"
+            ? "suroeste"
+            : "sureste";
+      return "el " + dir;
     }
 
     // the grenadier: a sidearm at singles, and a throw at the district's
@@ -2422,18 +2434,18 @@
       const self = this;
       const { surv, zomb, shel, guard, turret } = this.counts(agents);
       return {
-        title: "outbreak, wave " + wave,
+        title: "brote, oleada " + wave,
         stats:
-          "alive " +
+          "vivos " +
           surv +
-          "   turned " +
+          "   convertidos " +
           zomb +
-          "   sheltered " +
+          "   refugiados " +
           shel +
-          "   guards " +
+          "   guardias " +
           guard +
-          (turret ? "   turrets " + turret : ""),
-        hint: "drag to pan · wheel to zoom · tap to call a strike",
+          (turret ? "   torretas " + turret : ""),
+        hint: "arrastra para desplazar · rueda para zoom · toca para pedir un ataque",
         legend(c, y, fs, vw, vh) {
           c.strokeStyle = "rgba(60,58,50,0.7)";
           c.lineWidth = 1.2;
@@ -2453,15 +2465,15 @@
         },
         overlay() {
           if (self.fell && self.lastSurv === 0) {
-            const f = self.fall || { lost: 0, doors: 0, dir: "the hills" };
+            const f = self.fall || { lost: 0, doors: 0, dir: "las colinas" };
             return {
               card: {
                 lost: true,
-                title: "night " + wave + " — the town has fallen",
+                title: "noche " + wave + " — el pueblo ha caído",
                 lines: [
-                  f.lost + " lost to the horde",
-                  f.doors + " doors held",
-                  "the horde swells from " + f.dir,
+                  f.lost + " perdidos ante la horda",
+                  f.doors + " puertas resistieron",
+                  "la horda crece desde " + f.dir,
                 ],
               },
             };

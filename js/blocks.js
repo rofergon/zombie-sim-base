@@ -85,11 +85,11 @@
     // placement rules (design §3.2): grass/sand/road only, walls must touch
     // the settlement, generators need one tile of open sky around them
     checkPlace(tx, ty, kind) {
-      if (!CAT[kind]) return { ok: false, err: "unknown block" };
-      if (!this.inGrid(tx, ty) || this.at(tx, ty))
-        return { ok: false, err: "something is already there" };
+      if (!CAT[kind]) return { ok: false, err: "estructura desconocida" };
+      if (!this.inGrid(tx, ty) || this.at(tx, ty)) return { ok: false, err: "ya hay algo aquí" };
       const t = this.tiles.typeAt(tx, ty);
-      if (t !== 0 && t !== 2 && t !== 3) return { ok: false, err: "build on grass, sand or road" };
+      if (t !== 0 && t !== 2 && t !== 3)
+        return { ok: false, err: "construye sobre hierba, arena o camino" };
       const n = [
         this.at(tx, ty - 1),
         this.at(tx, ty + 1),
@@ -97,9 +97,9 @@
         this.at(tx + 1, ty),
       ];
       if (CORES.includes(kind) && !n.some((b) => b))
-        return { ok: false, err: "walls must touch the settlement" };
+        return { ok: false, err: "las murallas deben tocar la base" };
       if (GENS.includes(kind) && !n.some((b) => !b))
-        return { ok: false, err: "needs open sky around it" };
+        return { ok: false, err: "necesita espacio libre alrededor" };
       return { ok: true };
     }
 

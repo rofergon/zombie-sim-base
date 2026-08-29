@@ -92,8 +92,8 @@
     [0, 105, 0, 150, 118, 0, 0, 95],
   ];
 
-  const ROM_PHRASES = ["ei, ei!", "hold the center!", "for rome!", "to the wings!"];
-  const CAR_PHRASES = ["for carthage!", "no retreat!", "break their line!", "hanibal!"];
+  const ROM_PHRASES = ["¡eh, eh!", "¡mantengan el centro!", "¡por Roma!", "¡a las alas!"];
+  const CAR_PHRASES = ["¡por Cartago!", "¡sin retirada!", "¡rompan su línea!", "¡Aníbal!"];
 
   /* ---------- inks ---------- */
 
@@ -899,7 +899,7 @@
       s.alive--;
       u.alive--; // routed men no longer count as fighting strength
       if (a.leader && a.sayT <= 0) {
-        a.say = "they're breaking!";
+        a.say = "¡están cediendo!";
         a.sayT = a.sayMax = 1.5;
       }
       this.fx.push({ x: a.x, y: a.y - 6, t: 0.3, poof: true, seed: a.seed });
@@ -1330,7 +1330,7 @@
         const dx = a.x - wx,
           dy = a.y - wy;
         if (dx * dx + dy * dy < 160 * 160 && a.sayT <= 0) {
-          a.say = "hold the line!";
+          a.say = "¡mantengan la línea!";
           a.sayT = a.sayMax = 1.6;
           break;
         }
@@ -1346,21 +1346,21 @@
       const mm = ((bt / 60) | 0).toString().padStart(2, "0");
       const ss = ((bt % 60) | 0).toString().padStart(2, "0");
       return {
-        title: "cannae, 216 bc · engagement " + wave,
+        title: "Canas, 216 a. C. · batalla " + wave,
         stats:
-          "rome " +
+          "Roma " +
           s0.dead +
-          "d " +
+          " muertos " +
           s0.gone +
-          "f · carthage " +
+          " huidos · Cartago " +
           s1.dead +
-          "d " +
+          " muertos " +
           s1.gone +
-          "f · " +
+          " huidos · " +
           mm +
           ":" +
           ss,
-        hint: "drag to pan · wheel to zoom · tap to rally the nearest line",
+        hint: "arrastra para desplazar · rueda para zoom · toca para reagrupar la línea más cercana",
         legend(c, y, fs) {
           c.lineCap = "round";
           c.lineWidth = 1.2;
@@ -1419,14 +1419,14 @@
           if (this.result === CAR) {
             const sd = this.sides[ROME];
             return {
-              main: "CARTHAGE — the field is won",
-              sub: "rome " + sd.dead + " dead · " + sd.gone + " fled · cannae, 216 bc",
+              main: "CARTAGO — el campo es nuestro",
+              sub: "Roma: " + sd.dead + " muertos · " + sd.gone + " huidos · Canas, 216 a. C.",
             };
           }
           const sd = this.sides[CAR];
           return {
-            main: "ROME — the field is held",
-            sub: "carthage " + sd.dead + " dead · " + sd.gone + " fled · cannae, 216 bc",
+            main: "ROMA — el campo resiste",
+            sub: "Cartago: " + sd.dead + " muertos · " + sd.gone + " huidos · Canas, 216 a. C.",
           };
         },
       };

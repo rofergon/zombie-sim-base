@@ -3,8 +3,14 @@
   "private": true,
   "description": "The Outbreak — a hand-drawn sketch zombie sim on a zoomable paper world",
   "scripts": {
-    "format": "oxfmt js/",
-    "lint": "oxlint js/"
+    "format": "oxfmt js/ tests/",
+    "lint": "oxlint js/ tests/",
+    "test:smoke": "node tests/smoke.js",
+    "test:zone": "node tests/zone-regression.js",
+    "test:zone-workers": "node tests/zone-workers.js",
+    "test:zone-squads": "node tests/zone-squads.js",
+    "test:zone-colony": "node tests/zone-colony.js",
+    "test": "npm run test:smoke && npm run test:zone && npm run test:zone-workers && npm run test:zone-squads && npm run test:zone-colony"
   },
   "devDependencies": {
     "oxfmt": "^0.63.0",

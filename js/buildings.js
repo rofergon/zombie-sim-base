@@ -80,16 +80,22 @@
     cellBldAt,
   };
 
-  function generate(world, nav) {
+  function generate(world, nav, options) {
     const rng = ZS.rng32(world.seed ^ 0xb11d);
+    const opts = options || null;
     B.list = [];
     B.cellBld = new Int16Array(nav.n);
     B.doorBld = new Int16Array(nav.n);
     B.cellBld.fill(-1);
     B.doorBld.fill(-1);
     for (let ti = 0; ti < world.towns.length; ti++) {
+      if (opts && opts.maxBuildings && B.list.length >= opts.maxBuildings) break;
       const tn = world.towns[ti];
-      for (let k = 0; k < tn.n; k++) place(tn, ti, k, rng, world, nav);
+      const count = opts ? Math.max(1, Math.round(tn.n * (opts.density || 1))) : tn.n;
+      for (let k = 0; k < count; k++) {
+        if (opts && opts.maxBuildings && B.list.length >= opts.maxBuildings) break;
+        place(tn, ti, k, rng, world, nav, opts);
+      }
     }
     world.buildings = B.list;
   }
@@ -106,10 +112,15 @@
     return false;
   }
 
-  function place(tn, ti, k, rng, world, nav) {
-    for (let attempt = 0; attempt < 60; attempt++) {
+  function place(tn, ti, k, rng, world, nav, opts) {
+    const maxAttempts = opts ? opts.attempts || 60 : 60,
+      spread = opts ? tn.spread * (opts.spread || 1) : tn.spread,
+      pad = opts ? (opts.pad ?? 55) : 55;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const arch = ARCH_POOL[(rng() * ARCH_POOL.length) | 0];
-      const s = 0.85 + rng() * 0.45;
+      const s = opts
+        ? (opts.scaleMin ?? 0.85) + rng() * (opts.scaleRange ?? 0.45)
+        : 0.85 + rng() * 0.45;
       const rooms = arch.rooms.map((r) => [r[0] * s, r[1] * s, r[2] * s, r[3] * s]);
       let minx = 1e9,
         miny = 1e9,
@@ -123,12 +134,12 @@
       }
       const bw = maxx - minx,
         bh = maxy - miny;
-      const wx = tn.x + (rng() - 0.5) * tn.spread - bw / 2 - minx;
-      const wy = tn.y + (rng() - 0.5) * tn.spread - bh / 2 - miny;
+      const wx = tn.x + (rng() - 0.5) * spread - bw / 2 - minx;
+      const wy = tn.y + (rng() - 0.5) * spread - bh / 2 - miny;
       if (wx < 60 || wy < 60 || wx + bw > world.w - 60 || wy + bh > world.h - 60) continue;
       if (!world.clearOfWater(wx, wy, bw, bh, 70)) continue;
       if (!world.clearOfForest(wx, wy, bw, bh, 30)) continue;
-      if (overlapsAny(wx, wy, bw, bh, 55)) continue;
+      if (overlapsAny(wx, wy, bw, bh, pad)) continue;
 
       const bi = B.list.length;
       markFloors(nav, wx, wy, rooms, bi);

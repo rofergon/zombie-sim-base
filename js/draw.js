@@ -327,8 +327,8 @@
     c.font = "italic 12px " + HAND;
     let hint = hud.hint;
     if (ZS.debug && ZS.debug.cam && ZS.debug.cam.auto)
-      hint += "  ·  auto-camera — drag to take control";
-    if (ZS.sound && !ZS.sound.unlocked) hint += "  ·  click for sound";
+      hint += "  ·  cámara automática — arrastra para tomar el control";
+    if (ZS.sound && !ZS.sound.unlocked) hint += "  ·  haz clic para activar el sonido";
     c.fillText(hint, 0, 0);
     c.restore();
 
@@ -408,7 +408,7 @@
       (0.45 + 0.25 * Math.sin((performance.now() / 1000) * 2.4)).toFixed(2) +
       ")";
     c.font = "italic " + fs * 0.85 + "px " + HAND;
-    c.fillText("click to continue", 0, y + h - fs * 0.9);
+    c.fillText("haz clic para continuar", 0, y + h - fs * 0.9);
     c.restore();
   }
 
@@ -448,10 +448,15 @@
     list.sort((p, q) => p.y - q.y);
     for (const it of list) {
       if (it.k === 0) drawTree(c, it.o, t);
-      else if (it.k === 1) drawBuilding(c, it.o);
-      else if (it.k === 3) ZS.scenario.drawBlock(c, it.o, t);
+      else if (it.k === 1) {
+        drawBuilding(c, it.o);
+        if (ZS.scenario.drawBuildingOverlay) ZS.scenario.drawBuildingOverlay(c, it.o, t);
+      } else if (it.k === 3) ZS.scenario.drawBlock(c, it.o, t);
       else ZS.scenario.draw(c, it.o, t);
     }
+
+    // persistent scenario overlays (selection routes, drag marquees) sit above the actors
+    if (ZS.scenario.drawOverlay) ZS.scenario.drawOverlay(c, t);
 
     // transient effects (tracers, poofs, blood) — the scenario renders its own records
     if (ZS.fx.length) ZS.scenario.drawFX(c, ZS.fx);
