@@ -96,6 +96,7 @@
           image,
           seen: this.serial,
           visualStamp: this._visualStamp(object),
+          dirty: true,
         };
       image.setOrigin(0.5, originY);
       if (this.pixelRatio !== 1) image.setDisplaySize(this.cellSize, this.cellSize);
@@ -165,6 +166,7 @@
         const visualStamp = this._visualStamp(object);
         if (record.visualStamp !== visualStamp) {
           record.visualStamp = visualStamp;
+          record.dirty = true;
           changed = true;
         }
         this._position(record, object);
@@ -184,8 +186,9 @@
       else ZS.drawBuildingSketch(context, object);
     }
 
-    paint(t) {
+    paint(t, dirtyOnly) {
       for (const record of this.records.values()) {
+        if (dirtyOnly && !record.dirty) continue;
         const page = record.page,
           context = page.context,
           x = (record.slot % this.cols) * this.cellSize * this.pixelRatio,
@@ -215,6 +218,7 @@
         context.translate(this.cellSize / 2 - anchorX, this.anchorY - anchorY);
         this._paintObject(context, object, t);
         context.restore();
+        record.dirty = false;
         page.dirty = true;
       }
       let uploads = 0;
@@ -277,7 +281,7 @@
 
     paint(t) {
       let uploads = 0;
-      for (let i = 0; i < this.atlases.length; i++) uploads += this.atlases[i].paint(t);
+      for (let i = 0; i < this.atlases.length; i++) uploads += this.atlases[i].paint(t, true);
       this.paintCount++;
       return uploads;
     }
@@ -595,6 +599,31 @@
       if (this.world.queryVisible) {
         this.world.queryVisible("trees", visible, this.visibleTrees);
         this.world.queryVisible("buildings", visible, this.visibleBuildings);
+        let count = 0;
+        for (let i = 0; i < this.visibleTrees.length; i++) {
+          const tree = this.visibleTrees[i];
+          if (
+            tree.x >= visible.x0 - tree.r &&
+            tree.x <= visible.x1 + tree.r &&
+            tree.y >= visible.y0 &&
+            tree.y <= visible.y1 + tree.r * 2
+          )
+            this.visibleTrees[count++] = tree;
+        }
+        this.visibleTrees.length = count;
+        count = 0;
+        for (let i = 0; i < this.visibleBuildings.length; i++) {
+          const building = this.visibleBuildings[i];
+          if (
+            !building.hidden &&
+            building.x + building.w >= visible.x0 &&
+            building.x <= visible.x1 &&
+            building.y + building.h >= visible.y0 &&
+            building.y <= visible.y1
+          )
+            this.visibleBuildings[count++] = building;
+        }
+        this.visibleBuildings.length = count;
       } else {
         this.visibleTrees.length = 0;
         this.visibleBuildings.length = 0;
@@ -625,7 +654,9 @@
         }
         return;
       }
-      this.buildingLod = this.visibleBuildings.length > MAX_ZONE_BUILDINGS;
+      this.buildingLod = this.buildingLod
+        ? this.visibleBuildings.length > MAX_ZONE_BUILDINGS - 32
+        : this.visibleBuildings.length > MAX_ZONE_BUILDINGS;
       this.treeLod = this.visibleTrees.length > MAX_ZONE_TREES;
       const buildings = this.buildingLod ? EMPTY : this.visibleBuildings,
         trees = this.treeLod ? EMPTY : this.visibleTrees,
@@ -702,8 +733,10 @@
 
       if (this.zone) {
         const inkAlpha =
-          !this.actorFallback && !this.buildingLod
-            ? Math.max(0, Math.min(1, (1.05 - cam.zoom) / 0.35))
+          !this.actorFallback && !this.overviewActive
+            ? this.buildingLod
+              ? 1
+              : Math.max(0, Math.min(1, (1.05 - cam.zoom) / 0.35))
             : 0;
         this.renderOptions.buildingInk = inkAlpha > 0.001;
         this.renderOptions.buildingInkAlpha = inkAlpha;

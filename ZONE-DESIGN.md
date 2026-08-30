@@ -144,6 +144,8 @@ The existing pages remain independent regression targets:
   hierarchy, water and relief are rendered in the paper style inside the grid;
   changing the center, size or relief invalidates that prepared extract until
   it is refreshed.
+- Every OSM building inside the selected grid is simulated, selectable and
+  lootable. Expeditions begin only beyond the selected 1×1/3×3/5×5 grid.
 - OSM nodes, ways and multipolygon relations are normalized once into a stable,
   scenario-owned `MapPack`: polygonal buildings, named POIs, road hierarchy,
   water, land use, bounds, projection metadata and license attribution.

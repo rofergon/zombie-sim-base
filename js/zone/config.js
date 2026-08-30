@@ -151,7 +151,7 @@
       ELEVATION_SAMPLES: 9,
       NAV_CELL: 10,
       REQUEST_TIMEOUT_MS: 45000,
-      MAP_PACK_VERSION: 1,
+      MAP_PACK_VERSION: 3,
       CACHE_DB: "zs-zone-maps",
       CACHE_STORE: "packs",
       ATTRIBUTION: "© OpenStreetMap contributors · ODbL",

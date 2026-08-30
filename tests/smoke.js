@@ -128,6 +128,113 @@ const CASES = [
         assert.equal(renderer.actorBackend, "webgl-atlas", "zone.html forced actor atlas");
         assert.equal(renderer.webgl, true, "zone.html WebGL renderer");
         assert.equal(renderer.depth, renderer.expectedDepth, "zone.html building y-depth");
+        const selection = await sim.page.evaluate(() => {
+          const scenario = ZS.scenario,
+            context = document.querySelector("#c").getContext("2d"),
+            cam = ZS.debug.cam,
+            zoom = cam.minZoom,
+            previousZoom = cam.zoom,
+            originalDraw = scenario._drawSelectedBuilding,
+            originalLine = ZS.wline,
+            originalPoly = ZS.wpoly,
+            widths = [];
+          let drawing = false;
+          scenario._drawSelectedBuilding = function (...args) {
+            drawing = true;
+            try {
+              return originalDraw.apply(this, args);
+            } finally {
+              drawing = false;
+            }
+          };
+          ZS.wline = (...args) => {
+            if (drawing) widths.push(context.lineWidth * zoom);
+            return originalLine(...args);
+          };
+          ZS.wpoly = (...args) => {
+            if (drawing) widths.push(context.lineWidth * zoom);
+            return originalPoly(...args);
+          };
+          try {
+            cam.zoom = zoom;
+            scenario.drawOverlay(context);
+            return widths;
+          } finally {
+            cam.zoom = previousZoom;
+            scenario._drawSelectedBuilding = originalDraw;
+            ZS.wline = originalLine;
+            ZS.wpoly = originalPoly;
+          }
+        });
+        assert.ok(selection.length > 0, "zone.html selected building remains in overlay");
+        assert.ok(
+          Math.min(...selection) >= 1.99,
+          "zone.html selection keeps a visible screen-space width",
+        );
+        const inkCache = await sim.page.evaluate(() => {
+          const original = ZS.appendWline,
+            context = document.querySelector("#c").getContext("2d"),
+            options = { ...ZS.renderBackend.renderOptions, buildingInk: true },
+            t = 12345.67;
+          let calls = 0;
+          ZS.appendWline = (...args) => {
+            calls++;
+            return original(...args);
+          };
+          try {
+            ZS.setBoil(t);
+            ZS.drawScene(
+              context,
+              ZS.debug.cam,
+              ZS.debug.world,
+              ZS.Sim,
+              t,
+              innerWidth,
+              innerHeight,
+              options,
+            );
+            const first = calls;
+            calls = 0;
+            ZS.drawScene(
+              context,
+              ZS.debug.cam,
+              ZS.debug.world,
+              ZS.Sim,
+              t,
+              innerWidth,
+              innerHeight,
+              options,
+            );
+            return { first, second: calls };
+          } finally {
+            ZS.appendWline = original;
+          }
+        });
+        assert.ok(inkCache.first > 0, "zone.html exterior ink path built");
+        assert.equal(inkCache.second, 0, "zone.html exterior ink path reused within boil epoch");
+
+        const dirtyPaint = await sim.page.evaluate(() => {
+          const atlas = ZS.renderBackend.buildingAtlases.atlases.find(
+              (candidate) => candidate.records.size > 1,
+            ),
+            records = Array.from(atlas.records.values()),
+            original = ZS.drawBuildingSketch;
+          let calls = 0;
+          ZS.drawBuildingSketch = (...args) => {
+            calls++;
+            return original(...args);
+          };
+          try {
+            for (let i = 0; i < records.length; i++) records[i].dirty = false;
+            records[0].dirty = true;
+            atlas.paint(performance.now() / 1000, true);
+            return { calls, records: records.length };
+          } finally {
+            ZS.drawBuildingSketch = original;
+          }
+        });
+        assert.ok(dirtyPaint.records > 1, "zone.html building atlas has multiple records");
+        assert.equal(dirtyPaint.calls, 1, "zone.html building atlas paints only dirty records");
         await sim.page.waitForTimeout(350);
         assert.equal(
           await sim.page.evaluate(() => ZS.renderBackend.stats.buildingPaints),
@@ -145,6 +252,28 @@ const CASES = [
             ZS.renderBackend.stats.buildingInk &&
             ZS.renderBackend.stats.buildingInkScreenWidth >= 1.24,
         );
+
+        await sim.page.evaluate(() => {
+          const renderer = ZS.renderBackend;
+          renderer._collectZoneActorsOriginal = renderer._collectZoneActors;
+          renderer._collectZoneActors = () => {
+            renderer.visibleBuildings.length = 161;
+            renderer.visibleBuildings.fill(ZS.debug.world.buildings[0]);
+            renderer.visibleTrees.length = 0;
+            renderer.visibleAgents.length = 0;
+          };
+        });
+        await sim.page.waitForFunction(
+          () =>
+            ZS.renderBackend.stats.buildingLod &&
+            ZS.renderBackend.stats.buildingInk &&
+            ZS.renderBackend.stats.buildingInkAlpha === 1,
+        );
+        await sim.page.evaluate(() => {
+          const renderer = ZS.renderBackend;
+          renderer._collectZoneActors = renderer._collectZoneActorsOriginal;
+          delete renderer._collectZoneActorsOriginal;
+        });
 
         await sim.page.evaluate(() => {
           const cam = ZS.debug.cam;

@@ -12,6 +12,15 @@
   const visibleWaters = [];
   const sceneList = [];
   const TREE_POLY = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+  const buildingInkCache = {
+    boil: -1,
+    amp: -1,
+    buildings: [],
+    states: [],
+    footprints: null,
+    runs: null,
+    doors: null,
+  };
 
   function addSceneItem(index, y, kind, object) {
     let item = sceneList[index];
@@ -176,12 +185,11 @@
     if (b.door) drawDoor(c, b, b.door);
   }
 
-  function drawFootprintWalls(c, b, width, amp) {
+  function traceFootprintWalls(target, b, amp, append) {
     const pts = b.footprint,
       n = pts.length,
-      door = b.door;
-    c.strokeStyle = "rgba(92,72,50,0.84)";
-    c.lineWidth = width || 1.75;
+      door = b.door,
+      line = append ? ZS.appendWline : ZS.wline;
     amp = amp === undefined ? 0.85 : amp;
     const a0 = pts[0],
       z = pts[n - 1],
@@ -197,8 +205,8 @@
         const gap = (door.hw || 5.6) + 1.3,
           elen = Math.hypot(dx, dy);
         if (gap * 2 < elen - 3) {
-          ZS.wline(
-            c,
+          line(
+            target,
             a.x,
             a.y,
             door.x - door.tx * gap,
@@ -206,8 +214,8 @@
             b.seed + i * 3.1,
             amp,
           );
-          ZS.wline(
-            c,
+          line(
+            target,
             door.x + door.tx * gap,
             door.y + door.ty * gap,
             p.x,
@@ -218,8 +226,14 @@
           continue;
         }
       }
-      ZS.wline(c, a.x, a.y, p.x, p.y, b.seed + i * 3.1, amp);
+      line(target, a.x, a.y, p.x, p.y, b.seed + i * 3.1, amp);
     }
+  }
+
+  function drawFootprintWalls(c, b, width, amp) {
+    c.strokeStyle = "rgba(92,72,50,0.84)";
+    c.lineWidth = width || 1.75;
+    traceFootprintWalls(c, b, amp, false);
   }
 
   function drawBuildingExterior(c, b, width, amp, alpha) {
@@ -236,6 +250,91 @@
         ZS.wline(c, run.x1, run.y1, run.x2, run.y2, b.seed + i * 3.1, amp);
       }
     }
+    if (b.door && !b.door.broken) {
+      const d = b.door,
+        tx = d.tx != null ? d.tx : d.face === "e" || d.face === "w" ? 0 : 1,
+        ty = d.ty != null ? d.ty : d.face === "e" || d.face === "w" ? 1 : 0,
+        hw = d.hw != null ? d.hw : 19;
+      c.strokeStyle = "rgba(60,40,18,0.92)";
+      c.lineWidth = width;
+      ZS.wline(c, d.x - tx * hw, d.y - ty * hw, d.x + tx * hw, d.y + ty * hw, b.seed + 55, amp);
+    }
+    c.restore();
+  }
+
+  function drawBuildingExteriors(c, buildings, t, width, amp, alpha) {
+    if (typeof Path2D !== "function") {
+      for (let i = 0; i < buildings.length; i++) {
+        const building = buildings[i];
+        if (!building.hidden) drawBuildingExterior(c, building, width, amp, alpha);
+      }
+      return;
+    }
+
+    const cache = buildingInkCache,
+      boil = Math.floor(t / 0.14);
+    let changed =
+      cache.boil !== boil || cache.amp !== amp || cache.buildings.length !== buildings.length;
+    if (!changed)
+      for (let i = 0; i < buildings.length; i++) {
+        const building = buildings[i],
+          state = (building.hidden ? 1 : 0) | (building.door && building.door.broken ? 2 : 0);
+        if (cache.buildings[i] !== building || cache.states[i] !== state) {
+          changed = true;
+          break;
+        }
+      }
+    if (changed) {
+      const footprints = new Path2D(),
+        runs = new Path2D(),
+        doors = new Path2D();
+      cache.buildings.length = buildings.length;
+      cache.states.length = buildings.length;
+      for (let i = 0; i < buildings.length; i++) {
+        const building = buildings[i],
+          door = building.door;
+        cache.buildings[i] = building;
+        cache.states[i] = (building.hidden ? 1 : 0) | (door && door.broken ? 2 : 0);
+        if (building.hidden) continue;
+        if (building.footprint) traceFootprintWalls(footprints, building, amp, true);
+        else
+          for (let j = 0; j < building.runs.length; j++) {
+            const run = building.runs[j];
+            ZS.appendWline(runs, run.x1, run.y1, run.x2, run.y2, building.seed + j * 3.1, amp);
+          }
+        if (door && !door.broken) {
+          const tx = door.tx != null ? door.tx : door.face === "e" || door.face === "w" ? 0 : 1,
+            ty = door.ty != null ? door.ty : door.face === "e" || door.face === "w" ? 1 : 0,
+            hw = door.hw != null ? door.hw : 19;
+          ZS.appendWline(
+            doors,
+            door.x - tx * hw,
+            door.y - ty * hw,
+            door.x + tx * hw,
+            door.y + ty * hw,
+            building.seed + 55,
+            amp,
+          );
+        }
+      }
+      cache.boil = boil;
+      cache.amp = amp;
+      cache.footprints = footprints;
+      cache.runs = runs;
+      cache.doors = doors;
+    }
+
+    c.save();
+    c.globalAlpha *= alpha;
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    c.lineWidth = width;
+    c.strokeStyle = "rgba(92,72,50,0.84)";
+    c.stroke(cache.footprints);
+    c.strokeStyle = "rgba(60,50,40,0.88)";
+    c.stroke(cache.runs);
+    c.strokeStyle = "rgba(60,40,18,0.92)";
+    c.stroke(cache.doors);
     c.restore();
   }
 
@@ -598,7 +697,8 @@
   function drawActorPass(c, world, sim, t, vis, options) {
     // everything that has height, painted back-to-front
     const list = sceneList;
-    let listN = 0;
+    let listN = 0,
+      buildingCandidates = null;
     if (!options || options.trees !== false) {
       const trees = world.queryVisible
         ? world.queryVisible("trees", vis, visibleTrees)
@@ -619,6 +719,7 @@
       const buildings = world.queryVisible
         ? world.queryVisible("buildings", vis, visibleBuildings)
         : world.buildings;
+      buildingCandidates = buildings;
       for (const b of buildings) {
         if (b.x + b.w < vis.x0 || b.x > vis.x1 || b.y + b.h < vis.y0 || b.y > vis.y1) continue;
         addSceneItem(listN++, b.y + b.h, 1, b);
@@ -636,18 +737,19 @@
       }
     list.length = listN;
     list.sort((p, q) => p.y - q.y);
+    if (drawBuildingInk)
+      drawBuildingExteriors(
+        c,
+        buildingCandidates,
+        t,
+        options.buildingInkWidth,
+        options.buildingInkAmp,
+        options.buildingInkAlpha,
+      );
     for (const it of list) {
       if (it.k === 0) drawTree(c, it.o, t);
       else if (it.k === 1) {
         if (drawBuildings && !it.o.hidden) drawBuilding(c, it.o);
-        if (drawBuildingInk && !it.o.hidden)
-          drawBuildingExterior(
-            c,
-            it.o,
-            options.buildingInkWidth,
-            options.buildingInkAmp,
-            options.buildingInkAlpha,
-          );
         if (drawBuildingOverlays && ZS.scenario.drawBuildingOverlay)
           ZS.scenario.drawBuildingOverlay(c, it.o, t);
       } else if (it.k === 3) ZS.scenario.drawBlock(c, it.o, t);

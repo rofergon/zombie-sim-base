@@ -321,7 +321,7 @@
       this.map.drawBuildingOverlay(
         c,
         shape,
-        Boolean(this.selectedBuilding && this.selectedBuilding.id === shape.zoneId),
+        false,
         Boolean(this.hoverBuilding && this.hoverBuilding.id === shape.zoneId),
         this._isAreaTarget(shape.zoneId),
         this.mapLayers,
@@ -337,6 +337,41 @@
       c.restore();
     }
 
+    _drawSelectionRect(c, x, y, w, h, seed, zoom) {
+      const amp = Math.max(2, 2 / zoom);
+      c.lineWidth = Math.max(2, 2 / zoom);
+      ZS.wline(c, x, y, x + w, y, seed, amp);
+      ZS.wline(c, x + w, y, x + w, y + h, seed + 1, amp);
+      ZS.wline(c, x + w, y + h, x, y + h, seed + 2, amp);
+      ZS.wline(c, x, y + h, x, y, seed + 3, amp);
+    }
+
+    _drawSelectedBuilding(c, zoom) {
+      const record = this.selectedBuilding;
+      if (!record || record.demolished) return;
+      const shape = record.shape,
+        points = shape.halo || shape.footprint;
+      c.save();
+      c.strokeStyle = "rgba(79,105,55,0.92)";
+      c.lineWidth = Math.max(2, 2 / zoom);
+      if (points) {
+        ZS.wpoly(c, points, shape.seed + 511, Math.max(0.7, 0.7 / zoom), true);
+        c.stroke();
+      } else {
+        const pad = 7;
+        this._drawSelectionRect(
+          c,
+          shape.x - pad,
+          shape.y - pad,
+          shape.w + pad * 2,
+          shape.h + pad * 2,
+          shape.seed + 511,
+          zoom,
+        );
+      }
+      c.restore();
+    }
+
     draw(c, agent, t) {
       ZS.ScenarioZombie.prototype.draw.call(this, c, agent, t);
       if (!agent.selected) return;
@@ -348,10 +383,13 @@
     }
 
     drawOverlay(c) {
+      const cam = ZS.debug && ZS.debug.cam,
+        zoom = Math.max(0.05, cam ? cam.zoom : 1);
       c.save();
       c.lineCap = "round";
       c.lineJoin = "round";
       this.fortifications.drawOverlay(c, this.mapLayers.defenses);
+      this._drawSelectedBuilding(c, zoom);
       for (let i = 0; i < this.selected.length; i++) {
         const agent = this.selected[i];
         if (agent.squadId !== null && agent.squadRank > 0) continue;
@@ -408,7 +446,7 @@
         c.strokeStyle = area ? "rgba(79,105,55,0.88)" : "rgba(61,52,43,0.75)";
         c.fillStyle = area ? "rgba(112,148,72,0.14)" : "rgba(112,148,72,0.08)";
         c.fillRect(x, y, w, h);
-        ZS.sketchRect(c, x, y, w, h, 2);
+        this._drawSelectionRect(c, x, y, w, h, 1, zoom);
         if (area) {
           c.fillStyle = "rgba(61,52,43,0.88)";
           c.font = 'bold 12px "Segoe Script", "Bradley Hand", cursive';

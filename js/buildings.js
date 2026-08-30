@@ -108,8 +108,8 @@
   function load(world, nav, records) {
     CELL = nav.cell || 20;
     B.list = [];
-    B.cellBld = new Int16Array(nav.n);
-    B.doorBld = new Int16Array(nav.n);
+    B.cellBld = new Int32Array(nav.n);
+    B.doorBld = new Int32Array(nav.n);
     B.cellBld.fill(-1);
     B.doorBld.fill(-1);
     // Rasterize the complete block before choosing any entrance. Otherwise
@@ -254,8 +254,8 @@
     const rng = ZS.rng32(world.seed ^ 0xb11d);
     const opts = options || null;
     B.list = [];
-    B.cellBld = new Int16Array(nav.n);
-    B.doorBld = new Int16Array(nav.n);
+    B.cellBld = new Int32Array(nav.n);
+    B.doorBld = new Int32Array(nav.n);
     B.cellBld.fill(-1);
     B.doorBld.fill(-1);
     for (let ti = 0; ti < world.towns.length; ti++) {

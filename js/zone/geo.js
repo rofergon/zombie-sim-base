@@ -9,6 +9,7 @@
   const GEO = CFG.GEO;
   const MAP = CFG.MAP;
   const EARTH_M = 111320;
+  const MAX_OSM_BUILDINGS = 30000;
 
   function finite(value, fallback) {
     const n = Number(value);
@@ -249,6 +250,7 @@
           ":" +
           Math.round(building.bounds.y0),
       )
+      .sort()
       .join("|");
     return hashText(fingerprint + "#" + roads.length + "#" + waters.length);
   }
@@ -356,18 +358,8 @@
     }
 
     buildings.sort((a, b) => a.sourceKey.localeCompare(b.sourceKey));
-    const maxBuildings = MAP.MAX_BUILDINGS_BY_SIZE[sizeId] || MAP.MAX_BUILDINGS_BY_SIZE.standard;
-    if (buildings.length > maxBuildings) {
-      buildings.sort((a, b) => {
-        const acx = (a.bounds.x0 + a.bounds.x1) / 2 - w / 2,
-          acy = (a.bounds.y0 + a.bounds.y1) / 2 - h / 2,
-          bcx = (b.bounds.x0 + b.bounds.x1) / 2 - w / 2,
-          bcy = (b.bounds.y0 + b.bounds.y1) / 2 - h / 2;
-        return acx * acx + acy * acy - (bcx * bcx + bcy * bcy);
-      });
-      buildings.length = maxBuildings;
-      buildings.sort((a, b) => a.sourceKey.localeCompare(b.sourceKey));
-    }
+    if (buildings.length > MAX_OSM_BUILDINGS)
+      throw new Error("La zona contiene demasiados edificios; elige una cuadrícula menor.");
     for (let i = 0; i < buildings.length; i++) {
       const building = buildings[i];
       building.id = i;
@@ -417,7 +409,7 @@
   }
 
   function normalizePack(raw) {
-    if (!raw || raw.version !== GEO.MAP_PACK_VERSION || raw.source !== "osm")
+    if (!raw || (raw.version !== 2 && raw.version !== GEO.MAP_PACK_VERSION) || raw.source !== "osm")
       throw new Error("El archivo no es un MapPack compatible.");
     const size = sizePreset(raw.size),
       center = {
@@ -459,12 +451,12 @@
           if (kind === "edificio") {
             shape.id = out.length;
             shape.name = cleanText(
-              item.name,
+              item.name || shape.tags.name,
               "edificio " + String(out.length + 1).padStart(3, "0"),
               80,
             );
             shape.poi = ZS.clamp(
-              Math.trunc(finite(item.poi, CFG.POI.RESIDENCE)),
+              Math.trunc(finite(item.poi, poiFromTags(shape.tags))),
               CFG.POI.RESIDENCE,
               CFG.POI.LIBRARY,
             );
@@ -476,11 +468,10 @@
         }
         return out;
       },
-      buildings = normalizeShapes(
-        raw.buildings,
-        "edificio",
-        MAP.MAX_BUILDINGS_BY_SIZE[size.id] || MAP.MAX_BUILDINGS_BY_SIZE.standard,
-      ),
+      sourceBuildings = Array.isArray(raw.buildings)
+        ? raw.buildings.concat(Array.isArray(raw.contextBuildings) ? raw.contextBuildings : [])
+        : raw.buildings,
+      buildings = normalizeShapes(sourceBuildings, "edificio", MAX_OSM_BUILDINGS),
       roads = normalizeShapes(raw.roads, "carretera", 20000),
       waters = normalizeShapes(raw.waters, "agua", 5000),
       land = normalizeShapes(raw.land, "terreno", 5000),

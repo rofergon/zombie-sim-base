@@ -57,6 +57,43 @@ function osmFixture() {
   };
 }
 
+function denseOsmFixture() {
+  const lat = 4.65,
+    lon = -74.05,
+    latScale = 111320 * 4,
+    lonScale = latScale * Math.cos((lat * Math.PI) / 180),
+    centers = [];
+  for (let gy = 0; gy < 3; gy++)
+    for (let gx = 0; gx < 3; gx++)
+      if (gx !== 1 || gy !== 1) centers.push({ x: gx * 2400 + 1200, y: gy * 2400 + 1200 });
+  for (let i = 0; i < 473; i++)
+    centers.push({ x: 2450 + (i % 22) * 104, y: 2450 + ((i / 22) | 0) * 104 });
+  const elements = [];
+  for (let i = 0; i < centers.length; i++) {
+    const center = centers[i],
+      nodes = [];
+    for (let corner = 0; corner < 4; corner++) {
+      const x = center.x + (corner === 0 || corner === 3 ? -20 : 20),
+        y = center.y + (corner < 2 ? -20 : 20),
+        id = i * 4 + corner + 1;
+      nodes.push(id);
+      elements.push({
+        type: "node",
+        id,
+        lat: lat - (y - 3600) / latScale,
+        lon: lon + (x - 3600) / lonScale,
+      });
+    }
+    elements.push({
+      type: "way",
+      id: 10000 + i,
+      nodes: nodes.concat(nodes[0]),
+      tags: { building: "house" },
+    });
+  }
+  return { elements };
+}
+
 (async () => {
   const browser = await launch();
   try {
@@ -94,6 +131,58 @@ function osmFixture() {
     assert.equal(pack.regions.length, 25);
     assert.equal(pack.buildings[0].name, "Biblioteca del Barrio");
     assert.equal(pack.buildings[1].name, "Farmacia Central");
+    const coverage = await base.page.evaluate(
+      ({ raw, lat, lon }) => {
+        const dense = ZS.ZoneMapPack.fromOverpass(
+            raw,
+            { lat, lon, name: "Ciudad densa" },
+            "standard",
+          ),
+          normalized = ZS.ZoneMapPack.normalize(JSON.parse(JSON.stringify(dense))),
+          legacy = JSON.parse(JSON.stringify(dense)),
+          cells = new Set();
+        legacy.version = 2;
+        legacy.contextBuildings = legacy.buildings.splice(-1);
+        const migrated = ZS.ZoneMapPack.normalize(legacy),
+          world = new ZS.World(dense.width, dense.height),
+          nav = new ZS.Nav(world, ZS.ZoneConfig.GEO.NAV_CELL),
+          map = new ZS.ZoneMap(ZS.scenario.state, { pack: dense });
+        world.nav = nav;
+        map.prepare(world, nav);
+        for (let i = 0; i < dense.buildings.length; i++) {
+          const bounds = dense.buildings[i].bounds,
+            gx = Math.min(2, Math.floor(((bounds.x0 + bounds.x1) * 3) / 14400)),
+            gy = Math.min(2, Math.floor(((bounds.y0 + bounds.y1) * 3) / 14400));
+          cells.add(gx + ":" + gy);
+        }
+        return {
+          active: dense.buildings.length,
+          cells: cells.size,
+          normalized: normalized.buildings.length,
+          migrated: migrated.buildings.length,
+          doors: map.records.filter((record) => record.shape.door).length,
+          selectable: map.records.filter((record) => map.buildingAt(record.cx, record.cy) === record)
+            .length,
+          lootable: map.records.filter(
+            (record) => map.reachable(record) && map.lootTotal(record) > 0,
+          ).length,
+          stableHash: normalized.hash === dense.hash,
+          stableMigrationHash: migrated.hash === dense.hash,
+        };
+      },
+      { raw: denseOsmFixture(), lat: 4.65, lon: -74.05 },
+    );
+    assert.deepEqual(coverage, {
+      active: 481,
+      cells: 9,
+      normalized: 481,
+      migrated: 481,
+      doors: 481,
+      selectable: 481,
+      lootable: 481,
+      stableHash: true,
+      stableMigrationHash: true,
+    });
     assert.equal(
       await base.page.evaluate(() => {
         const xml =

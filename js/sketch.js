@@ -40,21 +40,25 @@
   }
 
   /* Wobbly line: sub-segments jittered along the way, ends held tighter. */
-  function wline(c, x1, y1, x2, y2, seed, amp) {
+  function appendWline(path, x1, y1, x2, y2, seed, amp) {
     amp = amp || 1.6;
     const dx = x2 - x1,
       dy = y2 - y1;
     const len = Math.hypot(dx, dy);
     const n = Math.max(2, Math.round(len / 9));
-    c.beginPath();
     for (let i = 0; i <= n; i++) {
       const t = i / n,
         f = i > 0 && i < n ? 1 : 0.4;
       const px = x1 + dx * t + jit(seed + i * 7.1) * amp * f;
       const py = y1 + dy * t + jit(seed + i * 13.7 + 50) * amp * f;
-      if (i) c.lineTo(px, py);
-      else c.moveTo(px, py);
+      if (i) path.lineTo(px, py);
+      else path.moveTo(px, py);
     }
+  }
+
+  function wline(c, x1, y1, x2, y2, seed, amp) {
+    c.beginPath();
+    appendWline(c, x1, y1, x2, y2, seed, amp);
     c.stroke();
   }
 
@@ -126,6 +130,7 @@
   ZS.setBoil = setBoil;
   ZS.jit = jit;
   ZS.sjit = sjit;
+  ZS.appendWline = appendWline;
   ZS.wline = wline;
   ZS.wcirc = wcirc;
   ZS.sketchRect = sketchRect;
