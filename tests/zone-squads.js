@@ -234,6 +234,28 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(patrolRestored.loop, true);
     assert.equal(patrolRestored.orders, 2);
 
+    const stopped = await sim.page.evaluate(() => {
+      const scenario = ZS.scenario,
+        squad = scenario.squads.list[0],
+        before = squad.members.map((cid) => {
+          const member = scenario.citizens.at(cid);
+          return { x: member.x, y: member.y };
+        });
+      scenario.squads.clearOrders(squad);
+      ZS.recording.advance(3);
+      let drift = 0,
+        speed = 0;
+      for (let i = 0; i < squad.members.length; i++) {
+        const member = scenario.citizens.at(squad.members[i]);
+        drift = Math.max(drift, Math.hypot(member.x - before[i].x, member.y - before[i].y));
+        speed = Math.max(speed, Math.hypot(member.vx, member.vy));
+      }
+      return { drift, speed, state: squad.state };
+    });
+    assert.equal(stopped.state, "idle");
+    assert.ok(stopped.drift < 2, "stopped squad drifted " + stopped.drift);
+    assert.ok(stopped.speed < 1, "stopped squad retained speed " + stopped.speed);
+
     const encounter = await sim.page.evaluate(() => {
       const scenario = ZS.scenario,
         squad = scenario.squads.list[0];

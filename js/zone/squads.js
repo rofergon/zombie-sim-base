@@ -408,6 +408,14 @@
       squad.resumeBuildingId = null;
       squad.state = "idle";
       squad.routePaths.length = 0;
+      if (this.citizens)
+        for (let i = 0; i < squad.members.length; i++) {
+          const member = this.citizens.at(squad.members[i]);
+          if (!member) continue;
+          member.vx = member.vy = 0;
+          member.wantMove = false;
+          member.path = null;
+        }
       this._syncOrderViews(squad);
     }
 
@@ -430,6 +438,12 @@
       if (!squad || member.dead) return;
       member.orderIndex = squad.orderIndex;
       if (this.scavenge) this.scavenge.autoCombat(member, squad, dt, t, nav);
+      if (!squad.orders.length) {
+        member.wantMove = false;
+        member.vx *= Math.max(0, 1 - dt * 7);
+        member.vy *= Math.max(0, 1 - dt * 7);
+        return;
+      }
       if (member.cid === squad.members[0]) this._updateLeader(member, squad, dt, t, nav);
       else this._follow(member, squad, dt, nav);
     }
@@ -442,11 +456,9 @@
       if (squad.orderIndex >= squad.orders.length) {
         if (squad.patrolLoop && squad.orders.length >= 2) squad.orderIndex = 0;
         else {
-          squad.orders.length = 0;
-          squad.orderIndex = 0;
-          squad.routePaths.length = 0;
-          squad.state = squad.garrisonBuildingId === null ? "idle" : "garrisoned";
-          leader.wantMove = false;
+          const state = squad.garrisonBuildingId === null ? "idle" : "garrisoned";
+          this.clearOrders(squad);
+          squad.state = state;
           return;
         }
       }
@@ -483,10 +495,8 @@
       if (squad.orderIndex >= squad.orders.length) {
         if (squad.patrolLoop && squad.orders.length >= 2) squad.orderIndex = 0;
         else {
-          squad.orders.length = 0;
-          squad.orderIndex = 0;
-          squad.routePaths.length = 0;
-          squad.state = "idle";
+          this.clearOrders(squad);
+          return;
         }
       }
       this._syncOrderViews(squad);
