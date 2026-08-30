@@ -1,7 +1,7 @@
 /* Bootstrap: canvas + DPR, world, camera, input, main loop.
    Input: drag to pan, wheel to zoom (at cursor), two-finger pinch to zoom,
    tap/click — what it does is up to the scenario pack. */
-(() => {
+(async () => {
   "use strict";
   const ZS = window.ZS;
   const params = new URLSearchParams(location.search);
@@ -12,16 +12,22 @@
     H = 0,
     DPR = 1;
 
-  const world = new ZS.World(window.ZS_WW || 3200, window.ZS_WH || 2400); // a page may size its own world
+  // The scenario is created first so pages with a setup step (Zone's map
+  // selector) can choose the world dimensions before any large arrays or
+  // canvases are allocated. Other scenarios remain entirely synchronous.
+  const scenario = new (window.ZS_SCEN ? ZS[window.ZS_SCEN] : ZS.ScenarioZombie)();
+  ZS.scenario = scenario;
+  if (typeof scenario.bootstrap === "function") await scenario.bootstrap();
+  const worldOptions =
+      typeof scenario.worldOptions === "function" ? scenario.worldOptions() || {} : {},
+    world = new ZS.World(
+      worldOptions.w || window.ZS_WW || 3200,
+      worldOptions.h || window.ZS_WH || 2400,
+    ); // a page/scenario may size its own world
   // ?seed=N pins the map (reproducible runs); otherwise a fresh world on every refresh
   world.seed = parseInt(params.get("seed"), 10) | 0 || (Math.random() * 0x7fffffff) | 0;
   const nav = new ZS.Nav(world);
   world.nav = nav;
-  // scenario: which pack this page runs. Each HTML page sets
-  // window.ZS_SCEN to a scenario class name before this file loads
-  // (defaults to the outbreak when unset).
-  const scenario = new (window.ZS_SCEN ? ZS[window.ZS_SCEN] : ZS.ScenarioZombie)();
-  ZS.scenario = scenario;
   // terrain: a scenario may lay its own battlefield (river, lake, forest,
   // town — or none of them); the default is the seeded random town
   const customTerrain = typeof scenario.terrain === "function";
@@ -209,4 +215,11 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
-})();
+})().catch((error) => {
+  console.error(error);
+  window.ZS_BOOTSTRAP_ERROR = String(error && error.message ? error.message : error);
+  const panel = document.createElement("p");
+  panel.className = "zs-bootstrap-error";
+  panel.textContent = "No se pudo preparar el mapa: " + window.ZS_BOOTSTRAP_ERROR;
+  document.body.appendChild(panel);
+});

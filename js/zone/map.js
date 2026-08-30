@@ -43,27 +43,48 @@
     return out;
   }
 
+  function polygonArea(points) {
+    let area = 0;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++)
+      area += points[j].x * points[i].y - points[i].x * points[j].y;
+    return Math.abs(area) * 0.5;
+  }
+
   class ZoneMap {
-    constructor(state) {
+    constructor(state, geo) {
       this.state = state;
+      this.geo = geo || null;
       this.world = null;
       this.nav = null;
       this.records = [];
       this.roads = [];
+      this.roadIndex = new Map();
+      this.visibleRoads = [];
+      this.roadStamp = 0;
+      this.regions = [];
+      this.contours = [];
       this.hq = null;
       this.recommended = null;
+      this.minHQArea = CFG.MAP.MIN_HQ_AREA;
     }
 
     prepare(world, nav) {
       this.world = world;
       this.nav = nav;
+      if (this.geo && this.geo.pack) {
+        this._prepareMapPack(world, nav, this.geo.pack);
+        return;
+      }
+      world.chunked = world.w > 4000 || world.h > 4000;
       world.seed = this.state.attachSeed(world.seed);
       world.water();
       nav.markWater();
+      this._expandProceduralTowns(world);
       world.layoutForest();
+      const size = (this.geo && this.geo.size) || "classic";
       ZS.Buildings.generate(world, nav, {
         density: CFG.MAP.BUILDING_DENSITY,
-        maxBuildings: CFG.MAP.MAX_BUILDINGS,
+        maxBuildings: CFG.MAP.MAX_BUILDINGS_BY_SIZE[size] || CFG.MAP.MAX_BUILDINGS,
         spread: CFG.MAP.BUILDING_SPREAD,
         pad: CFG.MAP.BUILDING_PAD,
         attempts: CFG.MAP.BUILDING_TRIES,
@@ -74,6 +95,103 @@
       this._makeRoads(world.towns);
       this._bindBuildings(world.buildings);
       world.zoneMap = this;
+    }
+
+    _prepareMapPack(world, nav, pack) {
+      world.seed = this.state.attachSeed(parseInt(pack.hash, 16) | 0);
+      world.chunked = true;
+      world.mapPack = pack;
+      world.waterFeatures = pack.waters;
+      world.landFeatures = pack.land;
+      world.river = null;
+      world.lake = null;
+      world.ponds = [];
+      world.ripples = [];
+      world.forest = null;
+      this.roads = pack.roads;
+      this._indexRoads();
+      this.regions = pack.regions;
+      for (let i = 0; i < pack.waters.length; i++) nav.markPolygon(pack.waters[i].points, 0, true);
+      nav.applyElevation(pack.elevation);
+      for (let i = 0; i < pack.roads.length; i++)
+        nav.markRoad(pack.roads[i].points, pack.roads[i].width);
+      ZS.Buildings.load(world, nav, pack.buildings);
+      this._bindBuildings(world.buildings);
+      this._makeContours(pack.elevation, world.w, world.h);
+      world.zoneMap = this;
+    }
+
+    _expandProceduralTowns(world) {
+      const size = (this.geo && this.geo.size) || "classic";
+      if (size === "classic" || size === "compact") return;
+      const preset = CFG.MAP.SIZE_PRESETS[size],
+        cells = preset ? preset.cells : 1,
+        sector = CFG.MAP.SECTOR_METERS * CFG.MAP.PIXELS_PER_METER,
+        rng = ZS.rng32(world.seed ^ 0x6d6170);
+      for (let gy = 0; gy < cells; gy++)
+        for (let gx = 0; gx < cells; gx++) {
+          const x = gx * sector + sector * (0.28 + rng() * 0.44),
+            y = gy * sector + sector * (0.28 + rng() * 0.44);
+          let nearby = false;
+          for (let i = 0; i < world.towns.length; i++)
+            if (Math.hypot(world.towns[i].x - x, world.towns[i].y - y) < sector * 0.38) {
+              nearby = true;
+              break;
+            }
+          if (!nearby) world.towns.push({ x, y, n: 3 + ((rng() * 3) | 0), spread: 620 });
+        }
+    }
+
+    _makeContours(elevation, w, h) {
+      this.contours.length = 0;
+      if (!elevation || !Array.isArray(elevation.values) || elevation.max - elevation.min < 4)
+        return;
+      const cols = elevation.cols,
+        rows = elevation.rows,
+        values = elevation.values,
+        step = elevation.max - elevation.min > 80 ? 20 : 10,
+        first = Math.ceil(elevation.min / step) * step;
+      const edgePoint = (edge, x, y, level, corners) => {
+        const pairs = [
+            [0, 1],
+            [1, 2],
+            [2, 3],
+            [3, 0],
+          ],
+          pair = pairs[edge],
+          a = corners[pair[0]],
+          b = corners[pair[1]],
+          t = a.v === b.v ? 0.5 : (level - a.v) / (b.v - a.v);
+        return {
+          x: x + (a.x + (b.x - a.x) * t) * (w / (cols - 1)),
+          y: y + (a.y + (b.y - a.y) * t) * (h / (rows - 1)),
+        };
+      };
+      for (let level = first; level <= elevation.max; level += step)
+        for (let y = 0; y < rows - 1; y++)
+          for (let x = 0; x < cols - 1; x++) {
+            const corners = [
+                { x: 0, y: 0, v: values[y * cols + x] },
+                { x: 1, y: 0, v: values[y * cols + x + 1] },
+                { x: 1, y: 1, v: values[(y + 1) * cols + x + 1] },
+                { x: 0, y: 1, v: values[(y + 1) * cols + x] },
+              ],
+              hits = [];
+            for (let edge = 0; edge < 4; edge++) {
+              const a = corners[edge],
+                b = corners[(edge + 1) % 4];
+              if ((a.v < level && b.v >= level) || (b.v < level && a.v >= level)) hits.push(edge);
+            }
+            if (hits.length < 2) continue;
+            const ox = x * (w / (cols - 1)),
+              oy = y * (h / (rows - 1));
+            for (let hit = 1; hit < hits.length; hit += 2)
+              this.contours.push({
+                a: edgePoint(hits[hit - 1], ox, oy, level, corners),
+                b: edgePoint(hits[hit], ox, oy, level, corners),
+                level,
+              });
+          }
     }
 
     _makeRoads(towns) {
@@ -98,6 +216,60 @@
           seed: 400 + i * 17,
         });
       }
+      this._indexRoads();
+    }
+
+    _indexRoads() {
+      this.roadIndex.clear();
+      const bucket = 640;
+      for (let i = 0; i < this.roads.length; i++) {
+        const road = this.roads[i];
+        let bounds = road.bounds;
+        if (!bounds) {
+          bounds = {
+            x0: Math.min(road.x0, road.x1),
+            y0: Math.min(road.y0, road.y1),
+            x1: Math.max(road.x0, road.x1),
+            y1: Math.max(road.y0, road.y1),
+          };
+          road.bounds = bounds;
+        }
+        const x0 = Math.floor(bounds.x0 / bucket),
+          y0 = Math.floor(bounds.y0 / bucket),
+          x1 = Math.floor(bounds.x1 / bucket),
+          y1 = Math.floor(bounds.y1 / bucket);
+        for (let y = y0; y <= y1; y++)
+          for (let x = x0; x <= x1; x++) {
+            const key = x + ":" + y,
+              list = this.roadIndex.get(key);
+            if (list) list.push(road);
+            else this.roadIndex.set(key, [road]);
+          }
+      }
+    }
+
+    _queryRoads(visible) {
+      const out = this.visibleRoads;
+      out.length = 0;
+      if (!visible) return this.roads;
+      const bucket = 640,
+        x0 = Math.floor(visible.x0 / bucket),
+        y0 = Math.floor(visible.y0 / bucket),
+        x1 = Math.floor(visible.x1 / bucket),
+        y1 = Math.floor(visible.y1 / bucket),
+        stamp = ++this.roadStamp;
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++) {
+          const list = this.roadIndex.get(x + ":" + y);
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const road = list[i];
+            if (road._zoneRoadStamp === stamp) continue;
+            road._zoneRoadStamp = stamp;
+            out.push(road);
+          }
+        }
+      return out;
     }
 
     _bindBuildings(buildings) {
@@ -105,11 +277,12 @@
       const cx = this.world.w / 2,
         cy = this.world.h / 2;
       let best = null,
-        bestScore = -Infinity;
+        bestScore = -Infinity,
+        largestDoor = null;
       for (let i = 0; i < buildings.length; i++) {
         const shape = buildings[i],
-          area = Math.round(shape.w * shape.h),
-          saved = this._savedBuilding(i),
+          area = Math.round(shape.footprint ? polygonArea(shape.footprint) : shape.w * shape.h),
+          saved = this._savedBuilding(i, shape.sourceKey),
           generated = this._generateBuilding(i),
           record = {
             id: i,
@@ -118,9 +291,10 @@
             area,
             cx: shape.x + shape.w / 2,
             cy: shape.y + shape.h / 2,
-            name: "edificio " + String(i + 1).padStart(2, "0"),
+            name: shape.sourceName || "edificio " + String(i + 1).padStart(2, "0"),
+            sourceKey: shape.sourceKey || "procedural/" + i,
             flag: null,
-            poi: saved ? saved.poi : generated.poi,
+            poi: saved ? saved.poi : shape.sourcePoi || generated.poi,
             salvage: copyResources(saved ? saved.salvage : generated.salvage),
             loot: copyResources(saved ? saved.loot : generated.loot),
             lootWeapons: copyResources(saved ? saved.lootWeapons : generated.lootWeapons),
@@ -141,6 +315,7 @@
         record.poiLabel = POI_LABEL[record.poi];
         shape.zoneId = i;
         this.records.push(record);
+        if (shape.door && (!largestDoor || area > largestDoor.area)) largestDoor = record;
         if (!this.suitableHQ(record)) continue;
         const dist = Math.hypot(record.cx - cx, record.cy - cy),
           score = area - dist * 14;
@@ -149,15 +324,20 @@
           best = record;
         }
       }
+      if (!best && largestDoor) {
+        this.minHQArea = Math.max(1200, Math.floor(largestDoor.area * 0.9));
+        best = largestDoor;
+      }
       this.recommended = best || this.records[0] || null;
       const saved = this.at(this.state.hqId);
       if (saved && this.suitableHQ(saved)) this.setHQ(saved.id);
       else if (this.state.hqId !== null) this.state.setHQ(null);
     }
 
-    _savedBuilding(id) {
+    _savedBuilding(id, sourceKey) {
       const saved = this.state.zone.buildings;
-      for (let i = 0; i < saved.length; i++) if (saved[i].id === id) return saved[i];
+      for (let i = 0; i < saved.length; i++)
+        if ((sourceKey && saved[i].sourceKey === sourceKey) || saved[i].id === id) return saved[i];
       return null;
     }
 
@@ -215,7 +395,7 @@
     }
 
     suitableHQ(record) {
-      return Boolean(record && record.shape.door && record.area >= CFG.MAP.MIN_HQ_AREA);
+      return Boolean(record && record.shape.door && record.area >= this.minHQArea);
     }
 
     setHQ(id) {
@@ -277,6 +457,7 @@
         const record = this.records[i];
         out.push({
           id: record.id,
+          sourceKey: record.sourceKey,
           poi: record.poi,
           salvage: copyResources(record.salvage),
           loot: copyResources(record.loot),
@@ -307,21 +488,62 @@
     }
 
     drawGround(c) {
+      const visible = this.world.visibleRect,
+        overview = visible && visible.x1 - visible.x0 > 6000,
+        roads = this._queryRoads(visible);
       c.save();
       c.lineCap = "round";
       c.strokeStyle = "rgba(157,137,99,0.11)";
       c.lineWidth = CFG.MAP.ROAD_WIDTH;
-      for (let i = 0; i < this.roads.length; i++) {
-        const r = this.roads[i];
-        ZS.wline(c, r.x0, r.y0, r.x1, r.y1, r.seed, 2.2);
+      for (let i = 0; i < roads.length; i++) {
+        const r = roads[i];
+        if (overview && r.points && r.width < 22) continue;
+        if (r.points) this._drawRoad(c, r, 2.2, 0, r.width);
+        else ZS.wline(c, r.x0, r.y0, r.x1, r.y1, r.seed, 2.2);
       }
       c.strokeStyle = "rgba(75,67,55,0.16)";
       c.lineWidth = 1.1;
-      for (let i = 0; i < this.roads.length; i++) {
-        const r = this.roads[i];
-        ZS.wline(c, r.x0, r.y0, r.x1, r.y1, r.seed + 3, 1.4);
+      for (let i = 0; i < roads.length; i++) {
+        const r = roads[i];
+        if (overview && r.points && r.width < 22) continue;
+        if (r.points) this._drawRoad(c, r, 1.4, 3, 1.1);
+        else ZS.wline(c, r.x0, r.y0, r.x1, r.y1, r.seed + 3, 1.4);
+      }
+      c.strokeStyle = "rgba(92,72,50,0.17)";
+      c.lineWidth = 0.8;
+      for (let i = 0; i < this.contours.length; i++) {
+        if (overview) break;
+        const contour = this.contours[i];
+        if (
+          visible &&
+          (Math.max(contour.a.x, contour.b.x) < visible.x0 ||
+            Math.min(contour.a.x, contour.b.x) > visible.x1 ||
+            Math.max(contour.a.y, contour.b.y) < visible.y0 ||
+            Math.min(contour.a.y, contour.b.y) > visible.y1)
+        )
+          continue;
+        ZS.wline(c, contour.a.x, contour.a.y, contour.b.x, contour.b.y, contour.level * 13, 0.6);
       }
       c.restore();
+    }
+
+    _drawRoad(c, road, jitter, seedOffset, lineWidth) {
+      const points = road.points,
+        visible = this.world.visibleRect;
+      c.lineWidth = lineWidth || road.width || CFG.MAP.ROAD_WIDTH;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1],
+          b = points[i];
+        if (
+          visible &&
+          (Math.max(a.x, b.x) < visible.x0 ||
+            Math.min(a.x, b.x) > visible.x1 ||
+            Math.max(a.y, b.y) < visible.y0 ||
+            Math.min(a.y, b.y) > visible.y1)
+        )
+          continue;
+        ZS.wline(c, a.x, a.y, b.x, b.y, road.seed + i * 7 + (seedOffset || 0), jitter);
+      }
     }
 
     drawBuildingOverlay(c, shape, selected, hovered, areaTarget, layers, job) {

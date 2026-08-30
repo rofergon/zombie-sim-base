@@ -45,6 +45,7 @@
   // Returns "arrived" | "path" | "direct" | "fail" | "wait" | "blocked".
   function planAndFollow(a, tg, isZ, sp, dt, t, nav) {
     const swim = ZS.scenario.swim;
+    const terrainSpeed = nav.speedFactor ? nav.speedFactor(a.x, a.y) : 1;
     const d = Math.hypot(tg.x - a.x, tg.y - a.y);
     if (d < 16) return "arrived";
     const moved =
@@ -83,16 +84,16 @@
         }
         wp = a.path[a.pi];
       }
-      steerToward(a, wp.x, wp.y, sp, dt);
+      steerToward(a, wp.x, wp.y, sp * terrainSpeed, dt);
       return "path";
     }
     if (nav.los(a.x, a.y, tg.x, tg.y, isZ, swim)) {
-      steerToward(a, tg.x, tg.y, sp, dt);
+      steerToward(a, tg.x, tg.y, sp * terrainSpeed, dt);
       return "direct";
     }
     // no path, no line of sight: drift toward the target; the hard clamp
     // stops us against the obstacle and the stuck timer forces a replan.
-    steerToward(a, tg.x, tg.y, sp * 0.5, dt);
+    steerToward(a, tg.x, tg.y, sp * terrainSpeed * 0.5, dt);
     return "blocked";
   }
 

@@ -135,7 +135,7 @@
           </section>
           <section id="zone-alerts" class="zone-alert-strip" hidden aria-label="alertas del asentamiento"></section>
         </header>` +
-        '<aside class="zone-panel zone-missions"><h1>LA ZONA</h1>' +
+        '<aside class="zone-panel zone-missions"><h1>LA ZONA</h1><p id="zone-map-identity" class="zone-map-identity">Distrito procedural</p>' +
         '<p id="zone-objective" class="zone-objective">Asegura un cuartel general y prepara el distrito.</p>' +
         '<ol id="zone-objectives" class="zone-objectives">' +
         '<li data-objective="hq">Elige el cuartel general</li>' +
@@ -227,7 +227,8 @@
         "<p><b>LMB</b> seleccionar · <b>Ctrl+LMB</b> varias · <b>Shift+RMB</b> poner en cola<br><b>Espacio+arrastre</b> desplazar · <b>rueda</b> zoom · <b>Ctrl+1–9</b> grupo</p>" +
         "</nav>" +
         '<p id="zone-toast" class="zone-toast" aria-live="polite"></p>' +
-        '<p id="zone-map-hint" class="zone-map-hint" hidden></p>';
+        '<p id="zone-map-hint" class="zone-map-hint" hidden></p>' +
+        '<a id="zone-osm-credit" class="zone-osm-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" hidden>© OpenStreetMap contributors · ODbL</a>';
       const q = (selector) => root.querySelector(selector);
       this.day = q("#zone-day");
       this.time = q("#zone-time");
@@ -296,6 +297,8 @@
       this.garrison = q("#zone-garrison");
       this.retreat = q("#zone-retreat");
       this.mapHint = q("#zone-map-hint");
+      this.mapIdentity = q("#zone-map-identity");
+      this.osmCredit = q("#zone-osm-credit");
       this.alertStrip = q("#zone-alerts");
       this.alertSignature = "";
       this.mainDock = q(".zone-main-dock");
@@ -392,7 +395,9 @@
           research = event.target.closest("[data-system-tech]"),
           adapt = event.target.closest("[data-system-adapt-submit]"),
           defenseBuild = event.target.closest("[data-defense-build]"),
-          defenseRemove = event.target.closest("[data-defense-remove]");
+          defenseRemove = event.target.closest("[data-defense-remove]"),
+          expedition = event.target.closest("[data-expedition-region]"),
+          exportMap = event.target.closest("[data-export-map]");
         if (system && this.callbacks) this.callbacks.openSystem(system.dataset.system);
         else if (action && this.callbacks) {
           if (action.dataset.mainAction === "scavenge") this.callbacks.armArea();
@@ -410,11 +415,23 @@
         } else if (defenseBuild && this.callbacks)
           this.callbacks.armDefense(Number(defenseBuild.dataset.defenseBuild));
         else if (defenseRemove && this.callbacks) this.callbacks.armDefense(0);
+        else if (expedition && this.callbacks)
+          this.callbacks.expedition(expedition.dataset.expeditionRegion);
+        else if (exportMap && this.callbacks) this.callbacks.exportMap();
       });
     }
 
     connect(callbacks) {
       this.callbacks = callbacks;
+    }
+
+    setMapIdentity(world) {
+      this.mapIdentity.textContent =
+        (world.name || "Distrito procedural") + " · " + (world.size || "classic");
+      this.osmCredit.hidden = world.source !== "osm";
+      this.osmCredit.textContent = world.elevationSource
+        ? "© OpenStreetMap contributors · ODbL · relieve: " + world.elevationSource
+        : "© OpenStreetMap contributors · ODbL";
     }
 
     refreshClock(state, enabled) {
@@ -609,6 +626,8 @@
           model.defense.active,
           model.defense.warning,
         ];
+      else if (name === "expedition")
+        signatureData = [name, model.regions, model.stock[R.FOOD], model.stock[R.AMMO]];
       const signature = JSON.stringify(signatureData);
       if (signature === this.systemSignature) return;
       this.systemSignature = signature;
@@ -617,6 +636,7 @@
       else if (name === "research") this._renderResearchSystem(model);
       else if (name === "economy") this._renderEconomySystem(model);
       else if (name === "defense") this._renderDefenseSystem(model);
+      else if (name === "expedition") this._renderExpeditionSystem(model);
       else this._renderLockedSystem(name);
     }
 
@@ -829,6 +849,66 @@
       }
       html +=
         '</div><button class="zone-defense-remove" type="button" data-defense-remove>Retirar defensa · recupera 50%</button>';
+      this.systemBody.innerHTML = html;
+    }
+
+    _renderExpeditionSystem(model) {
+      const region = model.regions,
+        expedition = region.expedition;
+      let html =
+        '<div class="zone-system-callout"><span class="zone-icon zi-expedition"></span><span><b>' +
+        region.name +
+        "</b><small>" +
+        region.size +
+        " · " +
+        (region.source === "osm" ? "cartografía real" : "cartografía procedural") +
+        "</small></span></div>";
+      if (expedition)
+        html +=
+          '<div class="zone-defense-warning"><b>EXPEDICIÓN EN RUTA</b><span>' +
+          Math.ceil(expedition.remaining) +
+          " min restantes</span></div>";
+      html +=
+        '<p class="zone-system-lead">Los sectores centrales se simulan completos. Los exteriores se exploran como rutas regionales conectadas.</p><div class="zone-region-grid">';
+      let minX = Infinity,
+        minY = Infinity;
+      for (let i = 0; i < region.nodes.length; i++) {
+        minX = Math.min(minX, region.nodes[i].gx);
+        minY = Math.min(minY, region.nodes[i].gy);
+      }
+      for (let i = 0; i < region.nodes.length; i++) {
+        const node = region.nodes[i],
+          label = node.active
+            ? "zona activa"
+            : node.scouted
+              ? "explorado · botín " + node.loot
+              : node.discovered
+                ? "ruta conocida · amenaza " + node.threat
+                : "sector sin explorar";
+        html +=
+          '<button type="button" style="--rx:' +
+          (node.gx - minX + 1) +
+          ";--ry:" +
+          (node.gy - minY + 1) +
+          '" data-expedition-region="' +
+          node.id +
+          '" class="' +
+          (node.active ? "active" : node.scouted ? "scouted" : "") +
+          '" ' +
+          (node.canStart ? "" : "disabled") +
+          ' title="' +
+          label +
+          '"><b>' +
+          (node.active ? "■" : node.scouted ? "✓" : node.discovered ? "?" : "·") +
+          "</b><small>" +
+          label +
+          "</small></button>";
+      }
+      html +=
+        '</div><p class="zone-expedition-cost">Explorar: 1 patrulla · 6 comida · 2 munición · 3 horas</p>' +
+        (model.mapPackAvailable
+          ? '<button type="button" class="zone-export-map" data-export-map>Exportar MapPack para uso offline</button>'
+          : "");
       this.systemBody.innerHTML = html;
     }
 

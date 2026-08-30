@@ -120,6 +120,45 @@ The existing pages remain independent regression targets:
   brutes with extra health and structural damage. All variants retain the frozen
   survivor/zombie drawing contract.
 
+### Phase 7 — geographic identity and regional scale
+
+- A first-campaign selector searches places through Nominatim and prepares an
+  OpenStreetMap extract through Overpass when hosted. Because current Overpass
+  instances reject the null origin used by `file://`, double-click mode falls
+  back to bounded, adaptively split requests to the official OSM map API. A
+  deployment can override all service URLs through `window.ZS_GEO_ENDPOINTS`.
+  The procedural generator remains an explicit, fully offline option.
+- Initial-zone presets mirror the compact/medium/large choice of the reference
+  loop: 1×1 (0.6 km), 3×3 (1.8 km) and 5×5 sectors (3 km). Existing campaigns
+  keep the original 3200×2400 `classic` preset during v8 → v9 migration.
+- Campaign creation has a confirmation step. When hosted, the selector uses the
+  chosen city's Nominatim bounds and a practical urban zoom over visible
+  OpenStreetMap tiles. The player can pan, use the wheel or +/− controls, and
+  switch between `Ver ciudad`
+  and `Ver zona`. The fixed central overlay preserves the real scale of the
+  chosen 1×1/3×3/5×5 playable-sector grid, so city context and simulated area
+  remain distinct. Only visible tiles are requested and attribution stays on
+  screen. Double-click mode keeps the paper-vector fallback because standard
+  tiles require a valid web referrer.
+- `Preparar zona` then downloads just the selected extent. Its buildings, road
+  hierarchy, water and relief are rendered in the paper style inside the grid;
+  changing the center, size or relief invalidates that prepared extract until
+  it is refreshed.
+- OSM nodes, ways and multipolygon relations are normalized once into a stable,
+  scenario-owned `MapPack`: polygonal buildings, named POIs, road hierarchy,
+  water, land use, bounds, projection metadata and license attribution.
+- Optional Terrarium elevation samples create contour lines, walking penalties
+  on steep ground and a road movement bonus. Failure of the elevation service
+  degrades to a flat map without preventing campaign creation.
+- Large maps use lazy 1024 px ground/stain chunks, a bounded chunk cache, a
+  low-resolution overview and a spatial feature index. No 12000×12000 canvas is
+  allocated.
+- MapPacks are cached in IndexedDB, can be exported/imported as JSON, and are
+  referenced by ID and hash from the save rather than copied into localStorage.
+- The fully simulated area is surrounded by a connected regional graph.
+  Persistent three-hour expeditions consume supplies, scout adjacent sectors
+  and return bounded resources without adding off-camera agents to hot loops.
+
 ## Script ownership
 
 All scripts are classic IIFEs on `window.ZS`; `zone.html` defines the load
@@ -128,8 +167,10 @@ order and remains usable through `file://`.
 | File | Responsibility |
 |---|---|
 | `js/zone/config.js` | Persistent IDs and tuning values |
+| `js/zone/geo.js` | First-run selector, OSM adapters, MapPack normalization/cache/import/export |
 | `js/zone/state.js` | Runtime clock and versioned persistence |
 | `js/zone/map.js` | Dense terrain setup and building metadata |
+| `js/zone/regions.js` | Connected outer-sector graph and timed expeditions |
 | `js/zone/orders.js` | Input-created agent command queues |
 | `js/zone/citizens.js` | Citizen identity, needs, roles and persistence snapshots |
 | `js/zone/tasks.js` | Event-driven job board and salvage worker state machine |
@@ -174,13 +215,22 @@ sequence.
    their explicit consumption rules.
 9. Hidden infected are persisted as counts, not agents. Once revealed, the
    remaining encounter count is authoritative across save/load.
+10. A campaign's geographic map is immutable. The save stores its MapPack ID
+    and hash; missing cached data returns to the selector instead of silently
+    substituting different geometry.
+11. Large maps allocate render surfaces per visible chunk. The classic pages
+    retain the original single pre-rendered canvas path.
 
-## Save v8
+## Save v9
 
 ```text
 {
-  v: 8,
-  world: { seed },
+  v: 9,
+  world: {
+    seed, configured, source, size,
+    mapPackId, mapHash, name, center,
+    projection, dataTimestamp, elevationSource
+  },
   clock: { day, minute, speed, paused },
   zone: {
     hqId, initialized, stock,
@@ -189,21 +239,22 @@ sequence.
     nextSquadId, squads,
     nextFortificationId, fortifications,
     buildings,
+    regions, expedition,
     tech,
     defense
   }
 }
 ```
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV7` are pure/testable steps. A v3
+`ZoneSave.migrateV3` through `ZoneSave.migrateV8` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
 ## Later-phase boundary
 
-Vehicles, trade, factions, laws and an OSM-backed real-world map remain out of
-scope. Later work may deepen special-infected behaviors and add regional
-strategy without moving those rules into the generic core.
+Vehicles, trade, factions and laws remain out of scope. Later work may deepen
+special-infected behaviors, add moving regional squads and introduce renewable
+geographic data without moving scenario rules into the generic core.
 
 ## Verification
 
@@ -217,8 +268,10 @@ npm test
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
 assignment, salvage/conservation and dusk. `tests/zone-squads.js` covers seeded
 loot, formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v8 migration, construction
+save/load. `tests/zone-colony.js` covers v5 → v9 migration, construction
 conservation, research, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
-suite uses `file://`.
+suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
+polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
+selector, offline procedural fallback, the 5×5 preset and connected expeditions.

@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v8. */
+   shapes are discarded at this storage boundary so gameplay only sees v9. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -30,6 +30,8 @@
       nextFortificationId: 1,
       fortifications: [],
       buildings: [],
+      regions: [],
+      expedition: null,
       tech: Array.from({ length: CFG.TECH.COUNT }, () => false),
       defense: defaultDefense(),
     };
@@ -55,7 +57,19 @@
   function defaultData() {
     return {
       v: CFG.SAVE_VERSION,
-      world: { seed: null },
+      world: {
+        seed: null,
+        configured: false,
+        source: "procedural",
+        size: "classic",
+        mapPackId: null,
+        mapHash: null,
+        name: "Distrito procedural",
+        center: null,
+        projection: null,
+        dataTimestamp: null,
+        elevationSource: null,
+      },
       clock: {
         day: CFG.CLOCK.START_DAY,
         minute: CFG.CLOCK.START_MINUTE,
@@ -119,6 +133,31 @@
     zone.nextFortificationId = 1;
     zone.fortifications = [];
     return { v: 8, world: data.world, clock: data.clock, zone };
+  }
+
+  function migrateV8(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {}),
+      previous = data.world || {};
+    zone.regions = [];
+    zone.expedition = null;
+    return {
+      v: 9,
+      world: {
+        seed: intOr(previous.seed, null),
+        configured: true,
+        source: "procedural",
+        size: "classic",
+        mapPackId: null,
+        mapHash: null,
+        name: "Distrito procedural",
+        center: null,
+        projection: null,
+        dataTimestamp: null,
+        elevationSource: null,
+      },
+      clock: data.clock,
+      zone,
+    };
   }
 
   function normalizeOrder(raw) {
@@ -264,6 +303,7 @@
     if (!raw || !Number.isInteger(raw.id) || raw.id < 0) return null;
     return {
       id: raw.id,
+      sourceKey: typeof raw.sourceKey === "string" ? raw.sourceKey.slice(0, 80) : null,
       poi: clamp(intOr(raw.poi, CFG.POI.RESIDENCE), CFG.POI.RESIDENCE, CFG.POI.LIBRARY),
       salvage: resources(raw.salvage),
       loot: resources(raw.loot),
@@ -310,10 +350,52 @@
     return clean;
   }
 
+  function normalizeRegion(raw) {
+    if (!raw || typeof raw.id !== "string" || raw.id.length > 40) return null;
+    return {
+      id: raw.id,
+      discovered: Boolean(raw.discovered),
+      scouted: Boolean(raw.scouted),
+      loot: clamp(intOr(raw.loot, 0), 0, 9999),
+      threat: clamp(intOr(raw.threat, 0), 0, 99),
+    };
+  }
+
+  function normalizeExpedition(raw) {
+    if (!raw || typeof raw.regionId !== "string" || raw.regionId.length > 40) return null;
+    return {
+      regionId: raw.regionId,
+      remaining: clamp(numberOr(raw.remaining, 0), 0, 1440),
+    };
+  }
+
   function normalize(data) {
     const clean = defaultData();
     if (!data || data.v !== CFG.SAVE_VERSION) return clean;
-    if (data.world) clean.world.seed = intOr(data.world.seed, null);
+    if (data.world) {
+      const source = data.world;
+      clean.world.seed = intOr(source.seed, null);
+      clean.world.configured = Boolean(source.configured);
+      clean.world.source = source.source === "osm" ? "osm" : "procedural";
+      clean.world.size = Object.hasOwn(CFG.MAP.SIZE_PRESETS, source.size) ? source.size : "classic";
+      clean.world.mapPackId =
+        typeof source.mapPackId === "string" ? source.mapPackId.slice(0, 180) : null;
+      clean.world.mapHash = typeof source.mapHash === "string" ? source.mapHash.slice(0, 32) : null;
+      clean.world.name =
+        typeof source.name === "string" ? source.name.slice(0, 120) : "Distrito procedural";
+      if (
+        source.center &&
+        Number.isFinite(Number(source.center.lat)) &&
+        Number.isFinite(Number(source.center.lon))
+      )
+        clean.world.center = { lat: Number(source.center.lat), lon: Number(source.center.lon) };
+      clean.world.projection =
+        typeof source.projection === "string" ? source.projection.slice(0, 40) : null;
+      clean.world.dataTimestamp =
+        typeof source.dataTimestamp === "string" ? source.dataTimestamp.slice(0, 40) : null;
+      clean.world.elevationSource =
+        typeof source.elevationSource === "string" ? source.elevationSource.slice(0, 80) : null;
+    }
     if (data.clock) {
       clean.clock.day = Math.max(1, intOr(data.clock.day, clean.clock.day));
       clean.clock.minute = clamp(numberOr(data.clock.minute, clean.clock.minute), 0, 1439.999);
@@ -374,6 +456,16 @@
           zone.buildings.push(building);
         }
       }
+    const regionIds = [];
+    if (Array.isArray(source.regions))
+      for (let i = 0; i < source.regions.length; i++) {
+        const region = normalizeRegion(source.regions[i]);
+        if (region && !regionIds.includes(region.id)) {
+          regionIds.push(region.id);
+          zone.regions.push(region);
+        }
+      }
+    zone.expedition = normalizeExpedition(source.expedition);
     zone.nextCitizenId = Math.max(1, intOr(source.nextCitizenId, 1));
     zone.nextJobId = Math.max(1, intOr(source.nextJobId, 1));
     zone.nextSquadId = Math.max(1, intOr(source.nextSquadId, 1));
@@ -412,6 +504,7 @@
       if (data.v === 5) data = migrateV5(data);
       if (data.v === 6) data = migrateV6(data);
       if (data.v === 7) data = migrateV7(data);
+      if (data.v === 8) data = migrateV8(data);
       return normalize(data);
     }
 
@@ -435,6 +528,10 @@
       return migrateV7(data);
     }
 
+    static migrateV8(data) {
+      return migrateV8(data);
+    }
+
     static normalize(data) {
       return normalize(data);
     }
@@ -445,6 +542,15 @@
         return ZoneSave.migrate(JSON.parse(this.storage.getItem(CFG.SAVE_KEY)));
       } catch {
         return defaultData();
+      }
+    }
+
+    exists() {
+      if (!this.storage) return false;
+      try {
+        return this.storage.getItem(CFG.SAVE_KEY) !== null;
+      } catch {
+        return false;
       }
     }
 
@@ -470,6 +576,7 @@
     constructor(options) {
       const opts = options || {};
       this.store = new ZoneSave(opts.storage);
+      this.hasSave = opts.fresh ? false : this.store.exists();
       this.data = opts.fresh ? defaultData() : this.store.load();
       this.zone = this.data.zone;
       this.stock = this.zone.stock;
@@ -490,6 +597,21 @@
     setHQ(id) {
       this.hqId = Number.isInteger(id) ? id : null;
       this.zone.hqId = this.hqId;
+    }
+
+    setMapMeta(meta) {
+      const world = this.data.world;
+      world.configured = meta.configured !== false;
+      world.source = meta.source === "osm" ? "osm" : "procedural";
+      world.size = Object.hasOwn(CFG.MAP.SIZE_PRESETS, meta.size) ? meta.size : "classic";
+      world.mapPackId = typeof meta.mapPackId === "string" ? meta.mapPackId : null;
+      world.mapHash = typeof meta.mapHash === "string" ? meta.mapHash : null;
+      world.name = typeof meta.name === "string" ? meta.name.slice(0, 120) : "Distrito procedural";
+      world.center = meta.center || null;
+      world.projection = typeof meta.projection === "string" ? meta.projection : null;
+      world.dataTimestamp = typeof meta.dataTimestamp === "string" ? meta.dataTimestamp : null;
+      world.elevationSource =
+        typeof meta.elevationSource === "string" ? meta.elevationSource.slice(0, 80) : null;
     }
 
     setSpeed(speed) {

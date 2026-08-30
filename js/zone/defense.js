@@ -75,7 +75,17 @@
       this.data.buildingDamage = 0;
       this.data.breached = false;
       this.data.direction = this.directionForDay(this.state.day);
-      this.spawnRemaining = CFG.HORDE.BASE_COUNT + this.state.day * CFG.HORDE.PER_DAY;
+      const population = this.citizens.stats().population,
+        adapted = this.map.records.reduce(
+          (count, record) =>
+            count + (record.use !== CFG.BUILDING_USE.ABANDONED && record !== this.map.hq ? 1 : 0),
+          0,
+        );
+      this.spawnRemaining =
+        CFG.HORDE.BASE_COUNT +
+        this.state.day * CFG.HORDE.PER_DAY +
+        Math.floor(population / 20) +
+        Math.floor(adapted / 3);
       this.data.pending = this.spawnRemaining;
       this.data.live = 0;
       this.spawnT = 0;
@@ -106,21 +116,24 @@
       const world = this.map.world,
         direction = this.data.direction,
         offset = ((this.data.spawned * 83 + this.state.day * 47) % 700) - 350;
-      let x = world.w / 2,
-        y = world.h / 2;
+      const distance = Math.min(980, CFG.DEFENSE.MAX_DISTANCE_FROM_HQ + 220);
+      let x = this.map.hq.cx,
+        y = this.map.hq.cy;
       if (direction === 0) {
         x = this.map.hq.cx + offset;
-        y = 24;
+        y = this.map.hq.cy - distance;
       } else if (direction === 1) {
-        x = world.w - 24;
+        x = this.map.hq.cx + distance;
         y = this.map.hq.cy + offset;
       } else if (direction === 2) {
         x = this.map.hq.cx + offset;
-        y = world.h - 24;
+        y = this.map.hq.cy + distance;
       } else {
-        x = 24;
+        x = this.map.hq.cx - distance;
         y = this.map.hq.cy + offset;
       }
+      x = ZS.clamp(x, 24, world.w - 24);
+      y = ZS.clamp(y, 24, world.h - 24);
       const point = nav.nearestWalkable(x, y, 260, true) || nav.nearestWalkable(x, y, 260, false);
       if (!point) return;
       const enemy = this.scenario.makeAgent(point.x, point.y, 2);

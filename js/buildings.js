@@ -76,9 +76,95 @@
     cellBld: null, // floor cell -> building index
     doorBld: null, // intact-door cell -> building index
     generate,
+    load,
     doorBroken,
     cellBldAt,
   };
+
+  function pointInPoly(x, y, points) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i],
+        b = points[j];
+      if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x)
+        inside = !inside;
+    }
+    return inside;
+  }
+
+  // Load already-normalized geographic footprints. The procedural path above
+  // remains untouched; both paths produce the same runtime building contract.
+  function load(world, nav, records) {
+    B.list = [];
+    B.cellBld = new Int16Array(nav.n);
+    B.doorBld = new Int16Array(nav.n);
+    B.cellBld.fill(-1);
+    B.doorBld.fill(-1);
+    for (let i = 0; i < records.length; i++) {
+      const source = records[i],
+        points = source.points,
+        bounds = source.bounds;
+      if (!Array.isArray(points) || points.length < 3 || !bounds) continue;
+      const bi = B.list.length,
+        x = bounds.x0,
+        y = bounds.y0,
+        w = Math.max(CELL, bounds.x1 - bounds.x0),
+        h = Math.max(CELL, bounds.y1 - bounds.y0);
+      markPolyFloors(nav, points, bounds, bi);
+      wallRing(nav, x, y, w, h);
+      const door = placeDoor(nav, x, y, w, h, bi, true),
+        building = {
+          x,
+          y,
+          w,
+          h,
+          rooms: [[x, y, w, h]],
+          footprint: points,
+          runs: wallRuns(nav, x, y, w, h),
+          door,
+          seed: hashSeed(source.sourceKey),
+          sourceKey: source.sourceKey,
+          sourceTags: source.tags || {},
+          sourceName: source.name || "",
+          sourcePoi: source.poi,
+          sourceArea: source.area || 0,
+          inCount: 0,
+          survCount: 0,
+          escape: null,
+        };
+      building.escape = footprintEscape(building, door);
+      B.list.push(building);
+    }
+    world.buildings = B.list;
+    nav.version++;
+  }
+
+  function hashSeed(text) {
+    let h = 2166136261;
+    const value = String(text || "building");
+    for (let i = 0; i < value.length; i++) {
+      h ^= value.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) % 997;
+  }
+
+  function markPolyFloors(nav, points, bounds, bi) {
+    const ix0 = Math.max(0, (bounds.x0 / CELL) | 0),
+      iy0 = Math.max(0, (bounds.y0 / CELL) | 0),
+      ix1 = Math.min(nav.w - 1, (bounds.x1 / CELL) | 0),
+      iy1 = Math.min(nav.h - 1, (bounds.y1 / CELL) | 0);
+    for (let iy = iy0; iy <= iy1; iy++)
+      for (let ix = ix0; ix <= ix1; ix++) {
+        const x = (ix + 0.5) * CELL,
+          y = (iy + 0.5) * CELL,
+          index = iy * nav.w + ix;
+        if (nav.val[index] === 1 && pointInPoly(x, y, points)) {
+          nav.val[index] = 2;
+          B.cellBld[index] = bi;
+        }
+      }
+  }
 
   function generate(world, nav, options) {
     const rng = ZS.rng32(world.seed ^ 0xb11d);
@@ -300,7 +386,7 @@
     return out;
   }
   // one entry door: longest qualifying run, DOOR_W cells in its middle
-  function placeDoor(nav, wx, wy, bw, bh, bi) {
+  function placeDoor(nav, wx, wy, bw, bh, bi, fastInner) {
     const runs = wallRuns(nav, wx, wy, bw, bh);
     let best = null,
       bestLen = 0;
@@ -334,34 +420,52 @@
     // so shallow rooms and multi-room sections still get a valid target
     let bestCell = -1,
       bestDepth = 0;
-    const depth = new Int16Array(nav.n).fill(-1);
+    const depth = fastInner ? null : new Int16Array(nav.n).fill(-1);
     const q = [];
-    for (const i of cells) {
-      depth[i] = 0;
-      q.push(i);
-    }
-    let qi = 0;
-    while (qi < q.length) {
-      const i = q[qi++];
-      const d0 = i % nav.w,
-        d1 = (i / nav.w) | 0;
-      for (let oy = -1; oy <= 1; oy++)
-        for (let ox = -1; ox <= 1; ox++) {
-          if (!ox && !oy) continue;
-          const nx = d0 + ox,
-            ny = d1 + oy;
-          if (nx < 0 || ny < 0 || nx >= nav.w || ny >= nav.h) continue;
-          const j = ny * nav.w + nx;
-          if (depth[j] >= 0) continue;
-          const v = nav.val[j];
-          if (v !== 2 && v !== 3) continue;
-          depth[j] = depth[i] + 1;
-          if (v === 2 && depth[j] > bestDepth) {
-            bestDepth = depth[j];
-            bestCell = j;
+    if (fastInner) {
+      const ix0 = Math.max(0, (wx / CELL) | 0),
+        iy0 = Math.max(0, (wy / CELL) | 0),
+        ix1 = Math.min(nav.w - 1, ((wx + bw) / CELL) | 0),
+        iy1 = Math.min(nav.h - 1, ((wy + bh) / CELL) | 0);
+      for (let sy = iy0; sy <= iy1; sy++)
+        for (let sx = ix0; sx <= ix1; sx++) {
+          const index = sy * nav.w + sx;
+          if (nav.val[index] !== 2 || B.cellBld[index] !== bi) continue;
+          const point = nav.centerOf(index),
+            distance = (point.x - cx) * (point.x - cx) + (point.y - cy) * (point.y - cy);
+          if (distance > bestDepth) {
+            bestDepth = distance;
+            bestCell = index;
           }
-          q.push(j);
         }
+    } else {
+      for (const i of cells) {
+        depth[i] = 0;
+        q.push(i);
+      }
+      let qi = 0;
+      while (qi < q.length) {
+        const i = q[qi++];
+        const d0 = i % nav.w,
+          d1 = (i / nav.w) | 0;
+        for (let oy = -1; oy <= 1; oy++)
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            const nx = d0 + ox,
+              ny = d1 + oy;
+            if (nx < 0 || ny < 0 || nx >= nav.w || ny >= nav.h) continue;
+            const j = ny * nav.w + nx;
+            if (depth[j] >= 0) continue;
+            const v = nav.val[j];
+            if (v !== 2 && v !== 3) continue;
+            depth[j] = depth[i] + 1;
+            if (v === 2 && depth[j] > bestDepth) {
+              bestDepth = depth[j];
+              bestCell = j;
+            }
+            q.push(j);
+          }
+      }
     }
     const inner =
       bestCell >= 0
@@ -384,6 +488,28 @@
       frontIdx: f,
       inner,
     };
+  }
+
+  function footprintEscape(building, door) {
+    const from = door
+      ? door.front
+      : { x: building.x + building.w / 2, y: building.y + building.h / 2 };
+    let best = null,
+      distance = -1;
+    for (let i = 0; i < building.footprint.length; i++) {
+      const point = building.footprint[i],
+        dx = point.x - from.x,
+        dy = point.y - from.y,
+        d = dx * dx + dy * dy;
+      if (d > distance) {
+        distance = d;
+        best = point;
+      }
+    }
+    if (!best) return { x: building.x + building.w / 2, y: building.y + building.h / 2 };
+    const cx = building.x + building.w / 2,
+      cy = building.y + building.h / 2;
+    return { x: best.x * 0.82 + cx * 0.18, y: best.y * 0.82 + cy * 0.18 };
   }
 
   function frontOf(nav, r, mid) {

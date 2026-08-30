@@ -12,7 +12,8 @@
     constructor() {
       const params = new URLSearchParams(window.location.search);
       this.state = new ZS.ZoneState({ fresh: params.get("fresh") === "1" });
-      this.map = new ZS.ZoneMap(this.state);
+      this.geo = new ZS.ZoneGeo(this.state, params);
+      this.map = new ZS.ZoneMap(this.state, this.geo);
       this.orders = new ZS.ZoneOrders();
       this.citizens = new ZS.ZoneCitizens(this.state, this.map);
       this.tasks = new ZS.ZoneTasks(this.state, this.map);
@@ -21,6 +22,7 @@
       this.adaptations = new ZS.ZoneAdaptations(this.state, this.map);
       this.fortifications = new ZS.ZoneFortifications(this.state, this.map);
       this.defense = new ZS.ZoneDefense(this.state, this.map, this.fortifications);
+      this.regions = new ZS.ZoneRegions(this.state, this.map);
       this.ui = new ZS.ZoneUI(document.getElementById("zone-ui"));
       this.usesTimeScale = true;
       this.timeScale = 0;
@@ -109,6 +111,8 @@
         toggleLayer: (name) => this.toggleMapLayer(name),
         focusAlert: (index) => this.focusAlert(index),
         focusCitizen: (id) => this.focusCitizen(id),
+        expedition: (id) => this.startExpedition(id),
+        exportMap: () => this.geo.exportPack(),
       });
       this.state.capture = () => this._capture();
       window.addEventListener("keydown", (event) => {
@@ -153,10 +157,19 @@
       window.addEventListener("beforeunload", () => this.state.save());
     }
 
+    async bootstrap() {
+      await this.geo.prepare();
+    }
+
+    worldOptions() {
+      return this.geo.worldOptions();
+    }
+
     terrain(world, nav) {
       this.world = world;
       this.nav = nav;
       this.map.prepare(world, nav);
+      this.regions.prepare();
       this.fortifications.prepare(world, nav);
       this.selectedBuilding = this.map.hq || this.map.recommended;
       this.timeScale = this.map.hq ? this.state.scale() : 0;
@@ -186,6 +199,7 @@
         this._refreshSettlement();
       });
       this.fortifications.connect(this, this.agents, () => this._markUI());
+      this.regions.connect(() => this._markUI());
       this.tasks.reconcile();
       this._markUI();
       this._refreshSettlement();
@@ -197,6 +211,7 @@
       this.adaptations.update(dt);
       this.defense.update(dt, performance.now() / 1000, this.nav);
       this.fortifications.update(dt);
+      this.regions.update(dt);
       this.saveT += dt;
       if (this.saveT >= 10) {
         this.saveT = 0;
@@ -922,6 +937,17 @@
       window.location.href = window.location.pathname;
     }
 
+    startExpedition(id) {
+      const started = this.regions.start(id, this.squads.list.length);
+      this.ui.toast(
+        started
+          ? "La expedición ha partido. Regresará en unas tres horas."
+          : "Hace falta una patrulla, 6 de comida, 2 de munición y una ruta conectada.",
+      );
+      this._markUI();
+      return started;
+    }
+
     camInterest(_dt) {
       const target = this.map.hq || this.map.recommended;
       if (!target) return null;
@@ -1559,6 +1585,8 @@
         tech: this.state.zone.tech,
         fortificationCounts: this.fortifications.counts(),
         defense: this.defense.status(),
+        regions: this.regions.model(this.squads.list.length),
+        mapPackAvailable: Boolean(this.geo.pack),
         selectedBuilding: this.selectedBuilding,
         selectedCanAdapt: Boolean(
           this.selectedBuilding &&
@@ -1580,6 +1608,7 @@
 
     _refreshSettlement() {
       const stats = this.citizens.stats();
+      this.ui.setMapIdentity(this.state.data.world);
       this.ui.refreshSettlement(
         stats,
         this.state.stock,
@@ -1644,6 +1673,7 @@
       this.citizens.capture();
       this.fortifications.capture();
       this.defense.capture();
+      this.regions.capture();
     }
 
     /* Verification hooks call the same production command paths as the UI. */

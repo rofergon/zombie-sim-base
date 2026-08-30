@@ -7,10 +7,42 @@
   const ZS = (window.ZS = window.ZS || {});
 
   const HAND = '"Segoe Script","Bradley Hand","Comic Sans MS",cursive';
+  const visibleTrees = [];
+  const visibleBuildings = [];
+  const visibleWaters = [];
 
   /* ---------- world furniture ---------- */
 
   function drawWater(c, world) {
+    if (world.waterFeatures) {
+      c.lineCap = "round";
+      c.lineWidth = 1.7;
+      c.strokeStyle = "rgba(64,102,132,0.72)";
+      const visible = world.visibleRect;
+      const waters = world.queryVisible
+        ? world.queryVisible(
+            "waters",
+            visible || { x0: 0, y0: 0, x1: world.w, y1: world.h },
+            visibleWaters,
+          )
+        : world.waterFeatures;
+      for (let i = 0; i < waters.length; i++) {
+        const feature = waters[i],
+          bounds = feature.bounds;
+        if (
+          visible &&
+          bounds &&
+          (bounds.x1 < visible.x0 ||
+            bounds.x0 > visible.x1 ||
+            bounds.y1 < visible.y0 ||
+            bounds.y0 > visible.y1)
+        )
+          continue;
+        ZS.wpoly(c, feature.points, 1701 + i * 19, 1.5, true);
+        c.stroke();
+      }
+      return;
+    }
     if (!world.lake && !world.river) return; // tile worlds have no river
     c.lineCap = "round";
     c.lineWidth = 2;
@@ -19,8 +51,10 @@
       ZS.wpoly(c, world.lake.pts, 71, 2.2, true);
       c.stroke();
     }
-    ZS.wpoly(c, world.river.pts, 731, 2.2, true);
-    c.stroke();
+    if (world.river && world.river.pts.length) {
+      ZS.wpoly(c, world.river.pts, 731, 2.2, true);
+      c.stroke();
+    }
     // smaller ponds boil with their own seeds
     if (world.ponds)
       for (let i = 0; i < world.ponds.length; i++) {
@@ -77,10 +111,14 @@
     c.lineCap = "round";
     c.strokeStyle = "rgba(92,72,50,0.8)";
     c.lineWidth = 2;
-    for (let i = 0; i < b.runs.length; i++) {
-      const r = b.runs[i];
-      ZS.wline(c, r.x1, r.y1, r.x2, r.y2, b.seed + i * 3.1, 1.1);
-    }
+    if (b.footprint) {
+      ZS.wpoly(c, b.footprint, b.seed + 311, 1.05, true);
+      c.stroke();
+    } else
+      for (let i = 0; i < b.runs.length; i++) {
+        const r = b.runs[i];
+        ZS.wline(c, r.x1, r.y1, r.x2, r.y2, b.seed + i * 3.1, 1.1);
+      }
     if (b.door) drawDoor(c, b, b.door);
   }
 
@@ -419,21 +457,27 @@
     c.save();
     cam.apply(c, vw, vh);
 
-    // pre-rendered ground
-    c.drawImage(world.canvas, 0, 0, world.w, world.h);
+    const vis = cam.visible(vw, vh, 80);
+    world.visibleRect = vis;
+    // pre-rendered ground (one canvas on classic maps, visible chunks on large maps)
+    if (world.drawBase) world.drawBase(c, vis);
+    else c.drawImage(world.canvas, 0, 0, world.w, world.h);
     drawWater(c, world);
     // the scenario's own ground pass (tile washes, boiling borders)
     if (ZS.scenario.drawGround) ZS.scenario.drawGround(c, world, t);
-    if (world.stains) world.stains.draw(c);
+    if (world.stains) world.stains.draw(c, vis);
 
     // everything that has height, painted back-to-front
-    const vis = cam.visible(vw, vh, 80);
     const list = [];
-    for (const tr of world.trees) {
+    const trees = world.queryVisible ? world.queryVisible("trees", vis, visibleTrees) : world.trees;
+    for (const tr of trees) {
       if (tr.x < vis.x0 || tr.x > vis.x1 || tr.y < vis.y0 - tr.r * 2 || tr.y > vis.y1) continue;
       list.push({ y: tr.y, k: 0, o: tr });
     }
-    for (const b of world.buildings) {
+    const buildings = world.queryVisible
+      ? world.queryVisible("buildings", vis, visibleBuildings)
+      : world.buildings;
+    for (const b of buildings) {
       if (b.x + b.w < vis.x0 || b.x > vis.x1 || b.y + b.h < vis.y0 || b.y > vis.y1) continue;
       list.push({ y: b.y + b.h, k: 1, o: b });
     }

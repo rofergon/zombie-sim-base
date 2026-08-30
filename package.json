@@ -10,7 +10,8 @@
     "test:zone-workers": "node tests/zone-workers.js",
     "test:zone-squads": "node tests/zone-squads.js",
     "test:zone-colony": "node tests/zone-colony.js",
-    "test": "npm run test:smoke && npm run test:zone && npm run test:zone-workers && npm run test:zone-squads && npm run test:zone-colony"
+    "test:zone-geo": "node tests/zone-geo.js",
+    "test": "npm run test:smoke && npm run test:zone && npm run test:zone-workers && npm run test:zone-squads && npm run test:zone-colony && npm run test:zone-geo"
   },
   "devDependencies": {
     "oxfmt": "^0.63.0",

@@ -45,6 +45,16 @@
       this.river = null;
       this.ponds = [];
       this.canvas = document.createElement("canvas");
+      this.chunked = false;
+      this.chunkSize = 1024;
+      this.groundChunks = new Map();
+      this.overviewCanvas = null;
+      this.chunkTick = 0;
+      this.featureIndex = null;
+      this.visibleRect = null;
+      this.waterFeatures = null;
+      this.landFeatures = null;
+      this.mapPack = null;
       this.nav = null; // set by main.js before water()/build()/trees()
     }
 
@@ -561,7 +571,285 @@
 
     /* ---------- pre-rendered ground ---------- */
 
+    drawBase(c, visible) {
+      if (!this.chunked) {
+        c.drawImage(this.canvas, 0, 0, this.w, this.h);
+        return;
+      }
+      const size = this.chunkSize,
+        x0 = Math.max(0, Math.floor(visible.x0 / size)),
+        y0 = Math.max(0, Math.floor(visible.y0 / size)),
+        x1 = Math.min(Math.ceil(this.w / size) - 1, Math.floor(visible.x1 / size)),
+        y1 = Math.min(Math.ceil(this.h / size) - 1, Math.floor(visible.y1 / size));
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 36 && this.overviewCanvas) {
+        c.drawImage(this.overviewCanvas, 0, 0, this.w, this.h);
+        return;
+      }
+      this.chunkTick++;
+      for (let cy = y0; cy <= y1; cy++)
+        for (let cx = x0; cx <= x1; cx++) {
+          const record = this._groundChunk(cx, cy);
+          record.used = this.chunkTick;
+          c.drawImage(record.canvas, cx * size, cy * size, record.w, record.h);
+        }
+      while (this.groundChunks.size > 24) {
+        let oldestKey = null,
+          oldest = Infinity;
+        for (const [key, record] of this.groundChunks)
+          if (record.used < oldest) {
+            oldest = record.used;
+            oldestKey = key;
+          }
+        if (oldestKey !== null) this.groundChunks.delete(oldestKey);
+        else break;
+      }
+    }
+
+    _groundChunk(cx, cy) {
+      const key = cx + ":" + cy,
+        current = this.groundChunks.get(key);
+      if (current) return current;
+      const size = this.chunkSize,
+        ox = cx * size,
+        oy = cy * size,
+        w = Math.min(size, this.w - ox),
+        h = Math.min(size, this.h - oy),
+        canvas = document.createElement("canvas"),
+        context = canvas.getContext("2d"),
+        record = { canvas, w, h, used: this.chunkTick };
+      canvas.width = w;
+      canvas.height = h;
+      context.translate(-ox, -oy);
+      this._paintChunk(context, ox, oy, w, h, cx, cy);
+      this.groundChunks.set(key, record);
+      return record;
+    }
+
+    _paintChunk(g, ox, oy, width, height, cx, cy) {
+      const seed = this.seed ^ Math.imul(cx + 17, 73856093) ^ Math.imul(cy + 31, 19349663),
+        rng = ZS.rng32(seed),
+        x1 = ox + width,
+        y1 = oy + height,
+        inChunk = (bounds, pad) =>
+          !bounds ||
+          !(
+            bounds.x1 < ox - pad ||
+            bounds.x0 > x1 + pad ||
+            bounds.y1 < oy - pad ||
+            bounds.y0 > y1 + pad
+          ),
+        fillPolygon = (points) => {
+          if (!points || points.length < 3) return;
+          g.beginPath();
+          g.moveTo(points[0].x, points[0].y);
+          for (let i = 1; i < points.length; i++) g.lineTo(points[i].x, points[i].y);
+          g.closePath();
+          g.fill();
+        };
+      g.fillStyle = "#f3edde";
+      g.fillRect(ox, oy, width, height);
+      for (let i = 0, count = Math.max(120, ((width * height) / 900) | 0); i < count; i++) {
+        g.fillStyle = "rgba(90,80,60," + (rng() * 0.065).toFixed(3) + ")";
+        g.fillRect(ox + rng() * width, oy + rng() * height, 1.4, 1.4);
+      }
+      for (let i = 0; i < 5; i++) {
+        const x = ox + rng() * width,
+          y = oy + rng() * height,
+          radius = 70 + rng() * 160,
+          gradient = g.createRadialGradient(x, y, 3, x, y, radius);
+        gradient.addColorStop(0, "rgba(122,148,84," + (0.035 + rng() * 0.055).toFixed(3) + ")");
+        gradient.addColorStop(1, "rgba(122,148,84,0)");
+        g.fillStyle = gradient;
+        g.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+      }
+      if (this.landFeatures)
+        for (let i = 0; i < this.landFeatures.length; i++) {
+          const feature = this.landFeatures[i];
+          if (!inChunk(feature.bounds, 0)) continue;
+          const tags = feature.tags || {};
+          g.fillStyle =
+            tags.landuse === "forest" || tags.natural === "wood"
+              ? "rgba(104,132,66,0.16)"
+              : tags.landuse === "industrial"
+                ? "rgba(139,117,85,0.11)"
+                : "rgba(122,148,84,0.09)";
+          fillPolygon(feature.points);
+        }
+      if (this.forest) {
+        const f = this.forest,
+          gradient = g.createRadialGradient(f.x, f.y, 20, f.x, f.y, f.r);
+        gradient.addColorStop(0, "rgba(104,132,66,0.16)");
+        gradient.addColorStop(1, "rgba(104,132,66,0)");
+        g.fillStyle = gradient;
+        g.fillRect(f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+      }
+      g.fillStyle = "rgba(96,138,166,0.26)";
+      if (this.waterFeatures)
+        for (let i = 0; i < this.waterFeatures.length; i++) {
+          const feature = this.waterFeatures[i];
+          if (inChunk(feature.bounds, 0)) fillPolygon(feature.points);
+        }
+      else {
+        if (this.lake && this.lake.pts) fillPolygon(this.lake.pts);
+        if (this.river && this.river.pts) fillPolygon(this.river.pts);
+        for (let i = 0; i < this.ponds.length; i++) fillPolygon(this.ponds[i].pts);
+      }
+      for (let i = 0; i < this.buildings.length; i++) {
+        const building = this.buildings[i],
+          bounds = {
+            x0: building.x,
+            y0: building.y,
+            x1: building.x + building.w,
+            y1: building.y + building.h,
+          };
+        if (!inChunk(bounds, 4)) continue;
+        g.fillStyle = "rgba(198,182,150,0.30)";
+        if (building.footprint) fillPolygon(building.footprint);
+        else
+          for (let j = 0; j < building.rooms.length; j++) {
+            const room = building.rooms[j];
+            g.fillRect(room[0], room[1], room[2], room[3]);
+          }
+      }
+      g.strokeStyle = "rgba(60,50,40,0.45)";
+      if (ox === 0) {
+        g.beginPath();
+        g.moveTo(10, oy);
+        g.lineTo(10, y1);
+        g.stroke();
+      }
+      if (oy === 0) {
+        g.beginPath();
+        g.moveTo(ox, 10);
+        g.lineTo(x1, 10);
+        g.stroke();
+      }
+      if (x1 === this.w) {
+        g.beginPath();
+        g.moveTo(this.w - 10, oy);
+        g.lineTo(this.w - 10, y1);
+        g.stroke();
+      }
+      if (y1 === this.h) {
+        g.beginPath();
+        g.moveTo(ox, this.h - 10);
+        g.lineTo(x1, this.h - 10);
+        g.stroke();
+      }
+    }
+
+    _buildOverview() {
+      const maxSide = 1024,
+        scale = Math.min(maxSide / this.w, maxSide / this.h),
+        canvas = document.createElement("canvas"),
+        context = canvas.getContext("2d"),
+        polygon = (points) => {
+          if (!points || points.length < 3) return;
+          context.beginPath();
+          context.moveTo(points[0].x, points[0].y);
+          for (let i = 1; i < points.length; i++) context.lineTo(points[i].x, points[i].y);
+          context.closePath();
+          context.fill();
+        };
+      canvas.width = Math.max(1, Math.round(this.w * scale));
+      canvas.height = Math.max(1, Math.round(this.h * scale));
+      context.scale(scale, scale);
+      context.fillStyle = "#f3edde";
+      context.fillRect(0, 0, this.w, this.h);
+      if (this.landFeatures) {
+        context.fillStyle = "rgba(112,148,72,0.13)";
+        for (let i = 0; i < this.landFeatures.length; i++) polygon(this.landFeatures[i].points);
+      }
+      context.fillStyle = "rgba(96,138,166,0.26)";
+      if (this.waterFeatures)
+        for (let i = 0; i < this.waterFeatures.length; i++) polygon(this.waterFeatures[i].points);
+      else {
+        if (this.lake && this.lake.pts) polygon(this.lake.pts);
+        if (this.river && this.river.pts) polygon(this.river.pts);
+        for (let i = 0; i < this.ponds.length; i++) polygon(this.ponds[i].pts);
+      }
+      context.fillStyle = "rgba(198,182,150,0.42)";
+      for (let i = 0; i < this.buildings.length; i++) {
+        const building = this.buildings[i];
+        if (building.footprint) polygon(building.footprint);
+        else context.fillRect(building.x, building.y, building.w, building.h);
+      }
+      this.overviewCanvas = canvas;
+    }
+
+    _buildFeatureIndex() {
+      const size = 640,
+        make = (items, boundsFor) => {
+          const cells = new Map();
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i],
+              bounds = boundsFor(item),
+              x0 = Math.floor(bounds.x0 / size),
+              y0 = Math.floor(bounds.y0 / size),
+              x1 = Math.floor(bounds.x1 / size),
+              y1 = Math.floor(bounds.y1 / size);
+            for (let y = y0; y <= y1; y++)
+              for (let x = x0; x <= x1; x++) {
+                const key = x + ":" + y,
+                  list = cells.get(key);
+                if (list) list.push(item);
+                else cells.set(key, [item]);
+              }
+          }
+          return cells;
+        };
+      this.featureIndex = {
+        size,
+        stamp: 0,
+        trees: make(this.trees, (tree) => ({
+          x0: tree.x - tree.r,
+          y0: tree.y - tree.r * 2,
+          x1: tree.x + tree.r,
+          y1: tree.y,
+        })),
+        buildings: make(this.buildings, (building) => ({
+          x0: building.x,
+          y0: building.y,
+          x1: building.x + building.w,
+          y1: building.y + building.h,
+        })),
+        waters: make(this.waterFeatures || [], (feature) => feature.bounds),
+      };
+    }
+
+    queryVisible(kind, visible, out) {
+      out.length = 0;
+      const index = this.featureIndex;
+      if (!index || !index[kind]) return out;
+      const size = index.size,
+        x0 = Math.floor(visible.x0 / size),
+        y0 = Math.floor(visible.y0 / size),
+        x1 = Math.floor(visible.x1 / size),
+        y1 = Math.floor(visible.y1 / size),
+        stamp = ++index.stamp;
+      for (let y = y0; y <= y1; y++)
+        for (let x = x0; x <= x1; x++) {
+          const list = index[kind].get(x + ":" + y);
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const item = list[i];
+            if (item._worldVisibleStamp === stamp) continue;
+            item._worldVisibleStamp = stamp;
+            out.push(item);
+          }
+        }
+      return out;
+    }
+
     build() {
+      if (this.chunked) {
+        this.canvas.width = 1;
+        this.canvas.height = 1;
+        this.groundChunks.clear();
+        this._buildFeatureIndex();
+        this._buildOverview();
+        return;
+      }
       const c = this.canvas,
         g = c.getContext("2d");
       c.width = Math.round(this.w * SS);
@@ -700,6 +988,7 @@
       ZS.sketchRect(g, 10, 10, W - 20, H - 20);
       g.strokeStyle = "rgba(60,50,40,0.30)";
       ZS.sketchRect(g, 16, 16, W - 32, H - 32);
+      this._buildFeatureIndex();
     }
   }
 

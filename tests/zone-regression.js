@@ -14,7 +14,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     const migration = await sim.page.evaluate(() =>
       ZS.ZoneSave.migrate({ v: 1, seed: 91, day: 4, minute: 75, hq: 3 }),
     );
-    assert.equal(migration.v, 8);
+    assert.equal(migration.v, 9);
+    assert.equal(migration.world.source, "procedural");
+    assert.equal(migration.world.size, "classic");
     assert.equal(migration.world.seed, 91);
     assert.deepEqual(migration.clock, { day: 4, minute: 75, speed: 1, paused: true });
     assert.equal(migration.zone.hqId, 3);
@@ -74,7 +76,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       return citizen.cid;
     });
     assert.ok((await sim.page.locator("[data-alert-index]").count()) >= 1);
-    await sim.page.locator("[data-alert-index]").first().click();
+    await sim.page.locator("[data-alert-index]").first().dispatchEvent("click");
     assert.equal(
       await sim.page.evaluate(
         (id) => ZS.scenario.selected.some((citizen) => citizen.cid === id),

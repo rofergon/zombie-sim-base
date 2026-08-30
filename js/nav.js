@@ -45,6 +45,10 @@
       this.val = new Uint8Array(this.n);
       this.val.fill(1); // land until proven otherwise
       this.wm = new Uint8Array(this.n); // 1 = water cell (river/lake/pond)
+      this.cost = new Float32Array(this.n);
+      this.cost.fill(1);
+      this.road = new Uint8Array(this.n);
+      this.height = null;
       // persistent A* work arrays, stamped per search (no per-call alloc)
       this.g = new Float32Array(this.n);
       this.fs = new Float32Array(this.n);
@@ -105,6 +109,112 @@
           const i = iy * this.w + ix;
           if (onlyIf === undefined || this.val[i] === onlyIf) this.val[i] = v;
         }
+    }
+
+    markPolygon(points, value, water) {
+      if (!Array.isArray(points) || points.length < 3) return;
+      let x0 = Infinity,
+        y0 = Infinity,
+        x1 = -Infinity,
+        y1 = -Infinity;
+      for (let i = 0; i < points.length; i++) {
+        x0 = Math.min(x0, points[i].x);
+        y0 = Math.min(y0, points[i].y);
+        x1 = Math.max(x1, points[i].x);
+        y1 = Math.max(y1, points[i].y);
+      }
+      const ix0 = Math.max(0, (x0 / CELL) | 0),
+        iy0 = Math.max(0, (y0 / CELL) | 0),
+        ix1 = Math.min(this.w - 1, (x1 / CELL) | 0),
+        iy1 = Math.min(this.h - 1, (y1 / CELL) | 0);
+      for (let iy = iy0; iy <= iy1; iy++)
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const x = (ix + 0.5) * CELL,
+            y = (iy + 0.5) * CELL;
+          if (!pointInPoly(x, y, points)) continue;
+          const index = iy * this.w + ix;
+          this.val[index] = value;
+          if (water) this.wm[index] = 1;
+        }
+    }
+
+    markRoad(points, width) {
+      if (!Array.isArray(points) || points.length < 2) return;
+      const radius = Math.max(CELL * 0.5, width * 0.5),
+        radiusCells = Math.max(1, Math.ceil(radius / CELL));
+      for (let p = 1; p < points.length; p++) {
+        const a = points[p - 1],
+          b = points[p],
+          distance = Math.hypot(b.x - a.x, b.y - a.y),
+          steps = Math.max(1, Math.ceil(distance / (CELL * 0.5)));
+        for (let step = 0; step <= steps; step++) {
+          const t = step / steps,
+            ix = ((a.x + (b.x - a.x) * t) / CELL) | 0,
+            iy = ((a.y + (b.y - a.y) * t) / CELL) | 0;
+          for (let oy = -radiusCells; oy <= radiusCells; oy++)
+            for (let ox = -radiusCells; ox <= radiusCells; ox++) {
+              const nx = ix + ox,
+                ny = iy + oy;
+              if (nx < 0 || ny < 0 || nx >= this.w || ny >= this.h) continue;
+              const index = ny * this.w + nx;
+              if (this.val[index] === 1) {
+                this.road[index] = 1;
+                this.cost[index] = Math.max(1, this.cost[index] - 0.18);
+              }
+            }
+        }
+      }
+    }
+
+    applyElevation(elevation) {
+      if (
+        !elevation ||
+        !Array.isArray(elevation.values) ||
+        elevation.cols < 2 ||
+        elevation.rows < 2
+      )
+        return;
+      const cols = elevation.cols,
+        rows = elevation.rows,
+        values = elevation.values,
+        heights = new Float32Array(this.n);
+      for (let iy = 0; iy < this.h; iy++)
+        for (let ix = 0; ix < this.w; ix++) {
+          const gx = (ix / Math.max(1, this.w - 1)) * (cols - 1),
+            gy = (iy / Math.max(1, this.h - 1)) * (rows - 1),
+            x0 = Math.floor(gx),
+            y0 = Math.floor(gy),
+            x1 = Math.min(cols - 1, x0 + 1),
+            y1 = Math.min(rows - 1, y0 + 1),
+            tx = gx - x0,
+            ty = gy - y0,
+            top = values[y0 * cols + x0] * (1 - tx) + values[y0 * cols + x1] * tx,
+            bottom = values[y1 * cols + x0] * (1 - tx) + values[y1 * cols + x1] * tx;
+          heights[iy * this.w + ix] = top * (1 - ty) + bottom * ty;
+        }
+      this.height = heights;
+      for (let iy = 0; iy < this.h; iy++)
+        for (let ix = 0; ix < this.w; ix++) {
+          const index = iy * this.w + ix,
+            left = ix > 0 ? Math.abs(heights[index] - heights[index - 1]) : 0,
+            up = iy > 0 ? Math.abs(heights[index] - heights[index - this.w]) : 0;
+          this.cost[index] = 1.12 + Math.min(1.8, Math.max(left, up) / 3);
+        }
+      this.version++;
+    }
+
+    elevationAt(x, y) {
+      const index = this.idx(x, y);
+      return index >= 0 && this.height ? this.height[index] : 0;
+    }
+
+    speedFactor(x, y) {
+      const index = this.idx(x, y);
+      if (index < 0) return 1;
+      const cost = this.cost[index];
+      if (cost > 1.8) return 0.78;
+      if (cost > 1.35) return 0.9;
+      return this.road[index] ? 1.18 : 1;
     }
 
     // water from the world's river/lake/pond polygons (matches the
@@ -178,6 +288,7 @@
         stamp = this.stamp,
         val = this.val,
         wm = this.wm,
+        cost = this.cost,
         w = this.w,
         H = this.h;
       const tix = ti % w,
@@ -257,7 +368,8 @@
             if (!free(val[iy * w + nx], iy * w + nx) || !free(val[ny * w + ix], ny * w + ix))
               continue;
           }
-          const ng = g[i] + DIRS[d][2] * (swim && v === 0 && wm[ni] === 1 ? 4 : 1);
+          const ng =
+            g[i] + DIRS[d][2] * (swim && v === 0 && wm[ni] === 1 ? 4 : Math.max(1, cost[ni]));
           if (stamp[ni] === gen && ng >= g[ni]) continue;
           stamp[ni] = gen;
           g[ni] = ng;
