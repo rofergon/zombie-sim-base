@@ -176,12 +176,13 @@
     if (b.door) drawDoor(c, b, b.door);
   }
 
-  function drawFootprintWalls(c, b) {
+  function drawFootprintWalls(c, b, width, amp) {
     const pts = b.footprint,
       n = pts.length,
       door = b.door;
     c.strokeStyle = "rgba(92,72,50,0.84)";
-    c.lineWidth = 1.75;
+    c.lineWidth = width || 1.75;
+    amp = amp === undefined ? 0.85 : amp;
     const a0 = pts[0],
       z = pts[n - 1],
       closed = Math.abs(a0.x - z.x) < 0.05 && Math.abs(a0.y - z.y) < 0.05,
@@ -203,7 +204,7 @@
             door.x - door.tx * gap,
             door.y - door.ty * gap,
             b.seed + i * 3.1,
-            0.8,
+            amp,
           );
           ZS.wline(
             c,
@@ -212,13 +213,30 @@
             p.x,
             p.y,
             b.seed + i * 3.1 + 1.7,
-            0.8,
+            amp,
           );
           continue;
         }
       }
-      ZS.wline(c, a.x, a.y, p.x, p.y, b.seed + i * 3.1, 0.85);
+      ZS.wline(c, a.x, a.y, p.x, p.y, b.seed + i * 3.1, amp);
     }
+  }
+
+  function drawBuildingExterior(c, b, width, amp, alpha) {
+    c.save();
+    c.globalAlpha *= alpha;
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    if (b.footprint) drawFootprintWalls(c, b, width, amp);
+    else {
+      c.strokeStyle = "rgba(60,50,40,0.88)";
+      c.lineWidth = width;
+      for (let i = 0; i < b.runs.length; i++) {
+        const run = b.runs[i];
+        ZS.wline(c, run.x1, run.y1, run.x2, run.y2, b.seed + i * 3.1, amp);
+      }
+    }
+    c.restore();
   }
 
   function drawWindows(c, b) {
@@ -555,51 +573,83 @@
 
   /* ---------- per-frame pipeline ---------- */
 
-  function drawScene(c, cam, world, sim, t, vw, vh) {
-    c.clearRect(0, 0, vw, vh);
-    c.save();
-    cam.apply(c, vw, vh);
-
-    const vis = cam.visible(vw, vh, 80);
+  function drawStaticBasePass(c, world, vis) {
     world.visibleRect = vis;
-    // pre-rendered ground (one canvas on classic maps, visible chunks on large maps)
     if (world.drawBase) world.drawBase(c, vis);
     else c.drawImage(world.canvas, 0, 0, world.w, world.h);
+    // Permanent terrain changes belong in the base pass. Phaser can bake
+    // them into its ground chunks instead of drawing them on the top canvas.
+    if (ZS.scenario.drawPermanentGround) ZS.scenario.drawPermanentGround(c, world);
+  }
+
+  function drawDynamicGroundPass(c, world, t, vis) {
+    world.visibleRect = vis;
     drawWater(c, world);
     // the scenario's own ground pass (tile washes, boiling borders)
     if (ZS.scenario.drawGround) ZS.scenario.drawGround(c, world, t);
     if (world.stains) world.stains.draw(c, vis);
+  }
 
+  function drawGroundPass(c, world, t, vis) {
+    drawStaticBasePass(c, world, vis);
+    drawDynamicGroundPass(c, world, t, vis);
+  }
+
+  function drawActorPass(c, world, sim, t, vis, options) {
     // everything that has height, painted back-to-front
     const list = sceneList;
     let listN = 0;
-    const trees = world.queryVisible ? world.queryVisible("trees", vis, visibleTrees) : world.trees;
-    for (const tr of trees) {
-      if (tr.x < vis.x0 || tr.x > vis.x1 || tr.y < vis.y0 - tr.r * 2 || tr.y > vis.y1) continue;
-      addSceneItem(listN++, tr.y, 0, tr);
+    if (!options || options.trees !== false) {
+      const trees = world.queryVisible
+        ? world.queryVisible("trees", vis, visibleTrees)
+        : world.trees;
+      for (const tr of trees) {
+        if (tr.x < vis.x0 || tr.x > vis.x1 || tr.y < vis.y0 - tr.r * 2 || tr.y > vis.y1) continue;
+        addSceneItem(listN++, tr.y, 0, tr);
+      }
     }
-    const buildings = world.queryVisible
-      ? world.queryVisible("buildings", vis, visibleBuildings)
-      : world.buildings;
-    for (const b of buildings) {
-      if (b.x + b.w < vis.x0 || b.x > vis.x1 || b.y + b.h < vis.y0 || b.y > vis.y1) continue;
-      addSceneItem(listN++, b.y + b.h, 1, b);
+    const drawBuildings = !options || options.buildings !== false,
+      drawBuildingOverlays = !options || options.buildingOverlays !== false,
+      drawBuildingInk = Boolean(options && options.buildingInk);
+    if (
+      drawBuildings ||
+      drawBuildingInk ||
+      (drawBuildingOverlays && ZS.scenario.drawBuildingOverlay)
+    ) {
+      const buildings = world.queryVisible
+        ? world.queryVisible("buildings", vis, visibleBuildings)
+        : world.buildings;
+      for (const b of buildings) {
+        if (b.x + b.w < vis.x0 || b.x > vis.x1 || b.y + b.h < vis.y0 || b.y > vis.y1) continue;
+        addSceneItem(listN++, b.y + b.h, 1, b);
+      }
     }
-    for (const b of world.blocks ? world.blocks.list : []) {
-      if (b.x1 < vis.x0 || b.x0 > vis.x1 || b.by < vis.y0 || b.y0 > vis.y1) continue;
-      addSceneItem(listN++, b.by, 3, b);
-    }
-    for (const a of sim.agents) {
-      if (a.x < vis.x0 || a.x > vis.x1 || a.y < vis.y0 || a.y > vis.y1) continue;
-      addSceneItem(listN++, a.y, 2, a);
-    }
+    if (!options || options.blocks !== false)
+      for (const b of world.blocks ? world.blocks.list : []) {
+        if (b.x1 < vis.x0 || b.x0 > vis.x1 || b.by < vis.y0 || b.y0 > vis.y1) continue;
+        addSceneItem(listN++, b.by, 3, b);
+      }
+    if (!options || options.agents !== false)
+      for (const a of sim.agents) {
+        if (a.x < vis.x0 || a.x > vis.x1 || a.y < vis.y0 || a.y > vis.y1) continue;
+        addSceneItem(listN++, a.y, 2, a);
+      }
     list.length = listN;
     list.sort((p, q) => p.y - q.y);
     for (const it of list) {
       if (it.k === 0) drawTree(c, it.o, t);
       else if (it.k === 1) {
-        if (!it.o.hidden) drawBuilding(c, it.o);
-        if (ZS.scenario.drawBuildingOverlay) ZS.scenario.drawBuildingOverlay(c, it.o, t);
+        if (drawBuildings && !it.o.hidden) drawBuilding(c, it.o);
+        if (drawBuildingInk && !it.o.hidden)
+          drawBuildingExterior(
+            c,
+            it.o,
+            options.buildingInkWidth,
+            options.buildingInkAmp,
+            options.buildingInkAlpha,
+          );
+        if (drawBuildingOverlays && ZS.scenario.drawBuildingOverlay)
+          ZS.scenario.drawBuildingOverlay(c, it.o, t);
       } else if (it.k === 3) ZS.scenario.drawBlock(c, it.o, t);
       else ZS.scenario.draw(c, it.o, t);
     }
@@ -612,10 +662,64 @@
 
     // voices float above the crowd
     drawBubbles(c, sim.agents, vis);
+  }
+
+  function drawScene(c, cam, world, sim, t, vw, vh, options) {
+    c.clearRect(0, 0, vw, vh);
+    c.save();
+    cam.apply(c, vw, vh);
+
+    const vis = cam.visible(vw, vh, 80);
+    if (!options || options.ground !== false) {
+      if (!options || options.baseGround !== false) drawStaticBasePass(c, world, vis);
+      if (!options || options.dynamicGround !== false) drawDynamicGroundPass(c, world, t, vis);
+    }
+    drawActorPass(c, world, sim, t, vis, options);
 
     c.restore();
     drawHUD(c, t, vw, vh, sim.wave, sim.agents);
   }
 
+  // Phaser's Hold pilot keeps visible ground chunks in GPU textures.
+  // Effects, bubbles and HUD remain on the overlay canvas; Phaser can suppress
+  // blocks and agents here once their exact scenario drawings live in atlases.
+  function drawGroundTexturePass(c, world, t, visible, pass, clear) {
+    const previousVisible = world.visibleRect,
+      bounds = visible || { x0: 0, y0: 0, x1: world.w, y1: world.h };
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    if (clear) c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+    c.translate(-bounds.x0, -bounds.y0);
+    pass(c, world, t, bounds);
+    c.restore();
+    world.visibleRect = previousVisible;
+  }
+
+  function drawGroundTexture(c, world, t, visible) {
+    drawGroundTexturePass(c, world, t, visible, drawGroundPass, true);
+  }
+
+  function drawGroundBaseTexture(c, world, visible) {
+    drawGroundTexturePass(
+      c,
+      world,
+      0,
+      visible,
+      (context, subject, _t, bounds) => {
+        drawStaticBasePass(context, subject, bounds);
+      },
+      true,
+    );
+  }
+
+  function drawGroundOverlayTexture(c, world, t, visible) {
+    drawGroundTexturePass(c, world, t, visible, drawDynamicGroundPass, false);
+  }
+
   ZS.drawScene = drawScene;
+  ZS.drawGroundTexture = drawGroundTexture;
+  ZS.drawGroundBaseTexture = drawGroundBaseTexture;
+  ZS.drawGroundOverlayTexture = drawGroundOverlayTexture;
+  ZS.drawTreeSketch = drawTree;
+  ZS.drawBuildingSketch = drawBuilding;
 })();

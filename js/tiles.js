@@ -21,6 +21,8 @@
       this.rows = Math.max(1, Math.round(world.h / TILE));
       this.g = new Uint8Array(this.cols * this.rows); // 0 grass, 1 water, 2 sand, 3 road
       this.edges = []; // water/land border segments, rebuilt on every change
+      this.version = 0;
+      this.active = 0;
     }
 
     idx(tx, ty) {
@@ -39,7 +41,10 @@
     set(tx, ty, type) {
       if (!this.inGrid(tx, ty) || this.g[this.idx(tx, ty)] === type) return false;
       const i = this.idx(tx, ty);
+      if (this.g[i] === 0 && type !== 0) this.active++;
+      else if (this.g[i] !== 0 && type === 0) this.active--;
       this.g[i] = type;
+      this.version++;
       const x = tx * TILE,
         y = ty * TILE;
       if (type === 1)
@@ -79,6 +84,17 @@
       return [Math.floor(x / TILE), Math.floor(y / TILE)];
     }
 
+    hasActive(visible) {
+      if (this.active === 0) return false;
+      const tx0 = Math.max(0, Math.floor(visible.x0 / TILE)),
+        ty0 = Math.max(0, Math.floor(visible.y0 / TILE)),
+        tx1 = Math.min(this.cols - 1, Math.floor(visible.x1 / TILE)),
+        ty1 = Math.min(this.rows - 1, Math.floor(visible.y1 / TILE));
+      for (let ty = ty0; ty <= ty1; ty++)
+        for (let tx = tx0; tx <= tx1; tx++) if (this.g[this.idx(tx, ty)] !== 0) return true;
+      return false;
+    }
+
     // water/land border segments (the boiling outline runs along these)
     rebuildEdges() {
       this.edges.length = 0;
@@ -103,9 +119,13 @@
 
     // per-frame pass (camera transform already applied): washes, then the
     // boiling water border on top
-    drawAll(c) {
-      for (let ty = 0; ty < this.rows; ty++) {
-        for (let tx = 0; tx < this.cols; tx++) {
+    drawAll(c, visible) {
+      const tx0 = visible ? Math.max(0, Math.floor(visible.x0 / TILE)) : 0,
+        ty0 = visible ? Math.max(0, Math.floor(visible.y0 / TILE)) : 0,
+        tx1 = visible ? Math.min(this.cols - 1, Math.floor(visible.x1 / TILE)) : this.cols - 1,
+        ty1 = visible ? Math.min(this.rows - 1, Math.floor(visible.y1 / TILE)) : this.rows - 1;
+      for (let ty = ty0; ty <= ty1; ty++) {
+        for (let tx = tx0; tx <= tx1; tx++) {
           const v = this.g[this.idx(tx, ty)];
           if (!v) continue;
           const x = tx * TILE,
@@ -144,7 +164,17 @@
         c.lineCap = "round";
         c.lineWidth = 2;
         c.strokeStyle = "rgba(64,102,132,0.75)"; // same ink as the river outline
-        for (const e of this.edges) ZS.wline(c, e.x1, e.y1, e.x2, e.y2, e.seed, 1.6);
+        for (const e of this.edges) {
+          if (
+            visible &&
+            (Math.max(e.x1, e.x2) < visible.x0 ||
+              Math.min(e.x1, e.x2) > visible.x1 ||
+              Math.max(e.y1, e.y2) < visible.y0 ||
+              Math.min(e.y1, e.y2) > visible.y1)
+          )
+            continue;
+          ZS.wline(c, e.x1, e.y1, e.x2, e.y2, e.seed, 1.6);
+        }
       }
     }
   }

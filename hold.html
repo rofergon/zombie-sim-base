@@ -6,6 +6,7 @@
       name="viewport"
       content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
     />
+    <link rel="icon" href="data:," />
     <title>La Fortaleza — un simulador dibujado</title>
     <style>
       html,
@@ -17,8 +18,18 @@
         background: #efe8d8;
         transition: background 2.5s;
       }
+      #phaser-c,
       #c {
+        position: fixed;
+        inset: 0;
         display: block;
+      }
+      #phaser-c {
+        z-index: 0;
+        pointer-events: none;
+      }
+      #c {
+        z-index: 1;
         touch-action: none;
         -webkit-user-select: none;
         user-select: none;
@@ -145,13 +156,16 @@
     </style>
   </head>
   <body>
+    <canvas id="phaser-c" aria-hidden="true"></canvas>
     <canvas id="c"></canvas>
     <div id="ui"></div>
     <script>
       var ZS_WW = 1600;
       var ZS_WH = 1200;
       var ZS_SCEN = "ScenarioHold";
+      var ZS_RENDERER = "phaser";
     </script>
+    <script src="vendor/phaser.min.js"></script>
     <script src="js/sketch.js"></script>
     <script src="js/grid.js"></script>
     <script src="js/nav.js"></script>
@@ -165,6 +179,7 @@
     <script src="js/sim.js"></script>
     <script src="js/scenarios/hold.js"></script>
     <script src="js/draw.js"></script>
+    <script src="js/phaser-renderer.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

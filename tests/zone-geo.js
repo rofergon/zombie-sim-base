@@ -132,6 +132,7 @@ function osmFixture() {
       suitable: ZS.scenario.map.suitableHQ(ZS.scenario.map.recommended),
       heightGrid: Boolean(ZS.debug.nav.height),
       overviewWidth: ZS.debug.world.overviewCanvas.width,
+      overviewBuildingInk: ZS.debug.world.overviewBuildingInk,
       maxCanvas: Math.max(ZS.debug.world.canvas.width, ZS.debug.world.canvas.height),
       navCell: ZS.debug.nav.cell,
     }));
@@ -145,6 +146,7 @@ function osmFixture() {
       suitable: true,
       heightGrid: true,
       overviewWidth: 1024,
+      overviewBuildingInk: true,
       maxCanvas: 1,
       navCell: 10,
     });
@@ -342,13 +344,19 @@ function osmFixture() {
     await setupContext.close();
     process.stdout.write("✓ first-run selector and compact procedural fallback\n");
 
-    const large = await openSim(browser, "zone.html", { seed: 919, fresh: 1, size: "large" });
+    const large = await openSim(browser, "zone.html", {
+      seed: 919,
+      fresh: 1,
+      size: "large",
+      forceWebGLActors: 1,
+    });
     const largeWorld = await large.page.evaluate(() => ({
       width: ZS.debug.world.w,
       height: ZS.debug.world.h,
       chunked: ZS.debug.world.chunked,
       buildings: ZS.scenario.map.records.length,
       overviewWidth: ZS.debug.world.overviewCanvas.width,
+      overviewBuildingInk: ZS.debug.world.overviewBuildingInk,
       maxCanvas: Math.max(ZS.debug.world.canvas.width, ZS.debug.world.canvas.height),
     }));
     assert.equal(largeWorld.width, 12000);
@@ -356,7 +364,20 @@ function osmFixture() {
     assert.equal(largeWorld.chunked, true);
     assert.ok(largeWorld.buildings > 72 && largeWorld.buildings <= 1200);
     assert.equal(largeWorld.overviewWidth, 1024);
+    assert.equal(largeWorld.overviewBuildingInk, true);
     assert.equal(largeWorld.maxCanvas, 1);
+    await large.page.evaluate(() => {
+      ZS.debug.cam.auto = false;
+      ZS.debug.cam.fit(innerWidth, innerHeight);
+    });
+    await large.page.waitForFunction(
+      () => ZS.renderBackend && ZS.renderBackend.stats && ZS.renderBackend.stats.overview,
+    );
+    const largeRenderer = await large.page.evaluate(() => ZS.renderBackend.stats);
+    assert.equal(largeRenderer.mode, "zone");
+    assert.equal(largeRenderer.overview, true);
+    assert.ok(largeRenderer.chunks <= 24);
+    assert.equal(largeRenderer.buildingLod, true);
     assertNoErrors(large.errors, "large procedural Zone");
     await large.context.close();
     process.stdout.write("✓ 5×5 large procedural world uses bounded chunk canvases\n");

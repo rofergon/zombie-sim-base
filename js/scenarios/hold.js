@@ -403,7 +403,7 @@
     attachStains(_s) {}
 
     drawGround(c, world, _t) {
-      this.tiles.drawAll(c);
+      this.tiles.drawAll(c, world.visibleRect);
       // ghost preview for build tools
       if (this.phase === "day" && this.hover && typeof this.tool === "string") {
         const [tx, ty] = this.tiles.tileAt(this.hover.x, this.hover.y);

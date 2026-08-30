@@ -828,9 +828,40 @@
       context.fillStyle = "rgba(198,182,150,0.42)";
       for (let i = 0; i < this.buildings.length; i++) {
         const building = this.buildings[i];
+        if (building.hidden) continue;
         if (building.footprint) polygon(building.footprint);
         else context.fillRect(building.x, building.y, building.w, building.h);
       }
+      // At overview zoom the Phaser actor LOD intentionally releases the
+      // individual building atlases. Keep their exterior ink in this bounded
+      // texture so the town never collapses into anonymous floor washes.
+      // Width/jitter are expressed in overview pixels, then converted back to
+      // world units because this context is already scaled to the whole map.
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.strokeStyle = "rgba(60,50,40,0.82)";
+      context.lineWidth = 1.15 / scale;
+      for (let i = 0; i < this.buildings.length; i++) {
+        const building = this.buildings[i];
+        if (building.hidden) continue;
+        if (building.footprint) {
+          ZS.wpoly(context, building.footprint, building.seed + 211, 0.55 / scale, true);
+          context.stroke();
+        } else if (building.runs)
+          for (let j = 0; j < building.runs.length; j++) {
+            const run = building.runs[j];
+            ZS.wline(
+              context,
+              run.x1,
+              run.y1,
+              run.x2,
+              run.y2,
+              building.seed + j * 3.1,
+              0.45 / scale,
+            );
+          }
+      }
+      this.overviewBuildingInk = true;
       this.overviewCanvas = canvas;
     }
 

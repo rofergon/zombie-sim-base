@@ -46,6 +46,12 @@
   if (!customTerrain) world.placeAllTrees();
 
   const cam = new ZS.Camera(world);
+  const phaserCanvas = document.getElementById("phaser-c"),
+    renderBackend =
+      window.ZS_RENDERER === "phaser" && phaserCanvas && ZS.PhaserRenderer
+        ? new ZS.PhaserRenderer(phaserCanvas, world)
+        : null;
+  ZS.renderBackend = renderBackend;
 
   function resize() {
     DPR = Math.min(2, window.devicePixelRatio || 1);
@@ -55,6 +61,7 @@
     cv.height = Math.max(1, H * DPR);
     cv.style.width = W + "px";
     cv.style.height = H + "px";
+    if (renderBackend) renderBackend.resize(W, H);
     cam.clamp(W, H);
   }
   window.addEventListener("resize", resize);
@@ -223,12 +230,22 @@
       if (ti) cam.autoSeek(ti.x, ti.y, ti.zoom, dt, W, H, ti.ease);
     }
     if (ZS.sound) ZS.sound.tick(dt);
-    ZS.drawScene(ctx, cam, world, ZS.Sim, t, W, H);
+    const accelerated = renderBackend && renderBackend.update(cam, ZS.Sim, t, W, H);
+    ZS.drawScene(
+      ctx,
+      cam,
+      world,
+      ZS.Sim,
+      t,
+      W,
+      H,
+      accelerated ? renderBackend.renderOptions : null,
+    );
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 })().catch((error) => {
-  console.error(error);
+  console.error(error && error.stack ? error.stack : error);
   window.ZS_BOOTSTRAP_ERROR = String(error && error.message ? error.message : error);
   const panel = document.createElement("p");
   panel.className = "zs-bootstrap-error";

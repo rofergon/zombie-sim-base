@@ -554,14 +554,8 @@
       ];
     }
 
-    drawGround(c) {
-      const visible = this.world.visibleRect,
-        overview = visible && visible.x1 - visible.x0 > 6000,
-        roads = this._queryRoads(visible);
+    drawPermanentGround(c, visible) {
       c.save();
-      // Erase the pre-rendered floor wash down here, below every agent. Doing
-      // this in the y-sorted building overlay would cover inhabitants who
-      // happen to stand behind the former building.
       for (let i = 0; i < this.records.length; i++) {
         const record = this.records[i],
           shape = record.shape;
@@ -576,6 +570,13 @@
           continue;
         this._drawClearedLot(c, shape);
       }
+      c.restore();
+    }
+    drawGround(c) {
+      const visible = this.world.visibleRect,
+        overview = visible && visible.x1 - visible.x0 > 6000,
+        roads = this._queryRoads(visible);
+      c.save();
       c.lineCap = "round";
       c.strokeStyle = "rgba(157,137,99,0.11)";
       c.lineWidth = CFG.MAP.ROAD_WIDTH;

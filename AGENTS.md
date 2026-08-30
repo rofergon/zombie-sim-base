@@ -56,6 +56,14 @@ js/agents.js generic entity engine (AI pass, separation, clamp)
 js/sim.js game clock (rounds, reinforcements, tap)
 js/scenarios/zombie.js | cannae.js | hold.js | zone.js the SCENARIO PACK (contract below)
 js/draw.js scene + HUD pipeline (calls back into the scenario)
+js/phaser-renderer.js optional Phaser/WebGL compositor (Hold + Zone; keeps
+visible ground sectors in bounded CanvasTextures and packs blocks, buildings,
+trees and agents into shared sketch atlases; Zone uses a bounded overview/LOD
+for large maps and falls back to Canvas actors on software WebGL; textures
+for agents/trees update at boil cadence, while Zone buildings use stable 2×
+textures that refresh only when their visual state changes; transforms update
+every frame; the large-map overview carries permanent sketch building ink so
+LOD never removes exterior outlines)
 js/sound.js WebAudio cues (sketch-quiet blips/booms + the formant
 voice lines; unlocks on first pointerdown; the scenario
 names the events)

@@ -311,6 +311,10 @@
       c.fillRect(0, 0, world.w, world.h);
     }
 
+    drawPermanentGround(c, world) {
+      this.map.drawPermanentGround(c, world.visibleRect);
+    }
+
     drawBuildingOverlay(c, shape) {
       const record = this.map.at(shape.zoneId),
         job = record && this.tasks.forBuilding(record.id);

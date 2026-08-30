@@ -22,8 +22,20 @@ body {
   background: #efe8d8;
 }
 
+#phaser-c,
 #c {
+  position: fixed;
+  inset: 0;
   display: block;
+}
+
+#phaser-c {
+  z-index: 0;
+  pointer-events: none;
+}
+
+#c {
+  z-index: 1;
   cursor: default;
   touch-action: none;
   user-select: none;
