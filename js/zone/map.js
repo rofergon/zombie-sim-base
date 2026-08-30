@@ -778,21 +778,34 @@
         }
         c.restore();
       }
-      if (record !== this.hq || !record.flag) return;
-      const x = shape.x + shape.w / 2,
-        y = shape.y - 24;
+    }
+
+    drawHeadquartersFlag(c, zoom) {
+      const record = this.hq;
+      if (!record || !record.flag) return;
+      const shape = record.shape,
+        x = shape.x + shape.w / 2,
+        y = shape.y - 24,
+        scale = Math.max(1, 0.75 / zoom),
+        flag = record.flag;
+      flag[0].x = x + scale;
+      flag[0].y = y - 17 * scale;
+      flag[1].x = x + 22 * scale;
+      flag[1].y = y - 10 * scale;
+      flag[2].x = x + scale;
+      flag[2].y = y - 3 * scale;
       c.save();
       c.strokeStyle = "rgba(61,52,43,0.9)";
-      c.lineWidth = 1.8;
-      ZS.wline(c, x, y + 12, x, y - 18, shape.seed + 201, 1.2);
+      c.lineWidth = Math.max(1.8, 1.4 / zoom);
+      ZS.wline(c, x, y + 12 * scale, x, y - 18 * scale, shape.seed + 201, 1.2 * scale);
       c.fillStyle = "rgba(150,62,48,0.38)";
-      ZS.wpoly(c, record.flag, shape.seed + 211, 0.8, true);
+      ZS.wpoly(c, flag, shape.seed + 211, 0.8 * scale, true);
       c.fill();
       c.stroke();
       c.fillStyle = "rgba(61,52,43,0.9)";
-      c.font = 'italic 13px "Segoe Script", "Bradley Hand", cursive';
+      c.font = 'italic ' + Math.max(13, 11 / zoom) + 'px "Segoe Script", "Bradley Hand", cursive';
       c.textAlign = "center";
-      c.fillText("CG", x, shape.y - 50);
+      c.fillText("CG", x, y - 26 * scale);
       c.restore();
     }
 

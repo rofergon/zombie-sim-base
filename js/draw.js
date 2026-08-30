@@ -19,6 +19,7 @@
     states: [],
     footprints: null,
     runs: null,
+    windows: null,
     doors: null,
   };
 
@@ -250,6 +251,22 @@
         ZS.wline(c, run.x1, run.y1, run.x2, run.y2, b.seed + i * 3.1, amp);
       }
     }
+    if (b.windows) {
+      c.strokeStyle = "rgba(84,56,26,0.62)";
+      c.lineWidth = width * 0.7;
+      for (let i = 0; i < b.windows.length; i++) {
+        const window = b.windows[i];
+        ZS.wline(
+          c,
+          window.x - window.tx * window.hw,
+          window.y - window.ty * window.hw,
+          window.x + window.tx * window.hw,
+          window.y + window.ty * window.hw,
+          b.seed + 90 + i * 5.3,
+          amp * 0.5,
+        );
+      }
+    }
     if (b.door && !b.door.broken) {
       const d = b.door,
         tx = d.tx != null ? d.tx : d.face === "e" || d.face === "w" ? 0 : 1,
@@ -287,6 +304,7 @@
     if (changed) {
       const footprints = new Path2D(),
         runs = new Path2D(),
+        windows = new Path2D(),
         doors = new Path2D();
       cache.buildings.length = buildings.length;
       cache.states.length = buildings.length;
@@ -301,6 +319,19 @@
           for (let j = 0; j < building.runs.length; j++) {
             const run = building.runs[j];
             ZS.appendWline(runs, run.x1, run.y1, run.x2, run.y2, building.seed + j * 3.1, amp);
+          }
+        if (building.windows)
+          for (let j = 0; j < building.windows.length; j++) {
+            const window = building.windows[j];
+            ZS.appendWline(
+              windows,
+              window.x - window.tx * window.hw,
+              window.y - window.ty * window.hw,
+              window.x + window.tx * window.hw,
+              window.y + window.ty * window.hw,
+              building.seed + 90 + j * 5.3,
+              amp * 0.5,
+            );
           }
         if (door && !door.broken) {
           const tx = door.tx != null ? door.tx : door.face === "e" || door.face === "w" ? 0 : 1,
@@ -321,6 +352,7 @@
       cache.amp = amp;
       cache.footprints = footprints;
       cache.runs = runs;
+      cache.windows = windows;
       cache.doors = doors;
     }
 
@@ -333,6 +365,10 @@
     c.stroke(cache.footprints);
     c.strokeStyle = "rgba(60,50,40,0.88)";
     c.stroke(cache.runs);
+    c.lineWidth = width * 0.7;
+    c.strokeStyle = "rgba(84,56,26,0.62)";
+    c.stroke(cache.windows);
+    c.lineWidth = width;
     c.strokeStyle = "rgba(60,40,18,0.92)";
     c.stroke(cache.doors);
     c.restore();
@@ -824,4 +860,5 @@
   ZS.drawGroundOverlayTexture = drawGroundOverlayTexture;
   ZS.drawTreeSketch = drawTree;
   ZS.drawBuildingSketch = drawBuilding;
+  ZS.drawBuildingExteriorInk = drawBuildingExteriors;
 })();

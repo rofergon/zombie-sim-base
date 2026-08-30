@@ -95,7 +95,11 @@
     }
     if (a.path && a.pi < a.path.length) {
       let wp = a.path[a.pi];
-      if (Math.hypot(wp.x - a.x, wp.y - a.y) < 16) {
+      const next = a.path[a.pi + 1];
+      if (
+        Math.hypot(wp.x - a.x, wp.y - a.y) < 16 &&
+        (!next || nav.los(a.x, a.y, next.x, next.y, isZ, swim))
+      ) {
         a.pi++;
         if (a.pi >= a.path.length) {
           a.path = null;

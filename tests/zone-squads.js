@@ -45,6 +45,33 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     }));
     assert.deepEqual(initial, { squads: 1, members: 4, squadRoles: true, jobs: true });
 
+    const corner = await sim.page.evaluate(() => {
+      const world = { w: 100, h: 100 },
+        nav = new ZS.Nav(world, 10);
+      nav.markRect(40, 0, 10, 50, 0);
+      const path = nav.astar(35, 35, 55, 35, false),
+        agent = {
+          x: 35,
+          y: 42,
+          vx: 0,
+          vy: 0,
+          a: 0,
+          gx: 55,
+          gy: 35,
+          routeStage: 0,
+          path,
+          pi: 1,
+          navV0: nav.version,
+          stuckT: 0,
+          planFailT: 0,
+          wantMove: false,
+        };
+      ZS.planAndFollow(agent, { x: 55, y: 35 }, false, 92, 0.05, 1, nav);
+      return { pi: agent.pi, vx: agent.vx, vy: agent.vy };
+    });
+    assert.equal(corner.pi, 1, "route follower must not cut a blocked corner");
+    assert.ok(Math.abs(corner.vx) < 0.01 && corner.vy > 0);
+
     const created = await sim.page.evaluate(() => {
       const scenario = ZS.scenario;
       scenario.debugSelectWorkers(5);

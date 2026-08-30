@@ -389,6 +389,7 @@
       c.lineCap = "round";
       c.lineJoin = "round";
       this.fortifications.drawOverlay(c, this.mapLayers.defenses);
+      this.map.drawHeadquartersFlag(c, zoom);
       this._drawSelectedBuilding(c, zoom);
       for (let i = 0; i < this.selected.length; i++) {
         const agent = this.selected[i];
