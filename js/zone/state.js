@@ -313,6 +313,7 @@
       looted: Boolean(raw.looted),
       scavengeProgress: Math.max(0, numberOr(raw.scavengeProgress, 0)),
       infectedRemaining: clamp(intOr(raw.infectedRemaining, 0), 0, 32),
+      demolished: Boolean(raw.demolished),
       use: clamp(
         intOr(raw.use, CFG.BUILDING_USE.ABANDONED),
         CFG.BUILDING_USE.ABANDONED,

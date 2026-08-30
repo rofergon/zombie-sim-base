@@ -187,9 +187,11 @@
         ty = y,
         buildingId = null;
       if (building) {
+        if (!this.map.reachable(building)) return false;
         const door = building.shape.door;
-        tx = door ? door.inner.x : building.cx;
-        ty = door ? door.inner.y : building.cy;
+        if (!door) return false;
+        tx = door.inner.x;
+        ty = door.inner.y;
         buildingId = building.id;
         kind =
           building === this.map.hq || building.looted || building.use !== CFG.BUILDING_USE.ABANDONED
@@ -206,9 +208,9 @@
     }
 
     issueGarrison(squad, building, append) {
-      if (!squad || !building || !building.shape) return false;
+      if (!squad || !building || !building.shape || !this.map.reachable(building)) return false;
       const door = building.shape.door,
-        target = door ? door.inner : building;
+        target = door.inner;
       const issued = this.issue(
         squad,
         CFG.ORDER.ENTER,
@@ -263,6 +265,7 @@
           !record ||
           record === this.map.hq ||
           record.use !== CFG.BUILDING_USE.ABANDONED ||
+          !this.map.reachable(record) ||
           record.looted ||
           this.map.lootTotal(record) <= 0 ||
           claimed.has(record.id)
@@ -552,7 +555,13 @@
       squad.resumeBuildingId = null;
       if (Number.isInteger(resume)) {
         const record = this.map.at(resume);
-        if (record && !record.looted && this.map.lootTotal(record) > 0) {
+        if (
+          record &&
+          !record.demolished &&
+          !record.demolitionT &&
+          !record.looted &&
+          this.map.lootTotal(record) > 0
+        ) {
           const door = record.shape.door,
             target = door ? door.inner : record;
           squad.orders[squad.orderIndex] = {

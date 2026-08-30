@@ -1632,7 +1632,11 @@
     }
 
     worldOptions() {
-      return { w: this.options.w, h: this.options.h };
+      return {
+        w: this.options.w,
+        h: this.options.h,
+        navCell: this.pack ? GEO.NAV_CELL : undefined,
+      };
     }
 
     exportPack() {

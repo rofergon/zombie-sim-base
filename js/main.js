@@ -26,7 +26,7 @@
     ); // a page/scenario may size its own world
   // ?seed=N pins the map (reproducible runs); otherwise a fresh world on every refresh
   world.seed = parseInt(params.get("seed"), 10) | 0 || (Math.random() * 0x7fffffff) | 0;
-  const nav = new ZS.Nav(world);
+  const nav = new ZS.Nav(world, worldOptions.navCell);
   world.nav = nav;
   // terrain: a scenario may lay its own battlefield (river, lake, forest,
   // town — or none of them); the default is the seeded random town
@@ -106,6 +106,18 @@
   // drag/zoom input hands control back for the session — a tap doesn't
   // (it's an action, e.g. sound unlock or the artillery call)
   cam.auto = typeof scenario.camInterest === "function";
+  if (cam.auto) {
+    // Scenario-owned setup targets (Zone's recommended HQ) are already
+    // known. Start there instead of rendering an entire large world once
+    // and spending the next seconds easing in from fit view.
+    const initialInterest = scenario.camInterest(0);
+    if (initialInterest) {
+      cam.x = initialInterest.x;
+      cam.y = initialInterest.y;
+      cam.zoom = ZS.clamp(initialInterest.zoom || cam.zoom, cam.minZoom, cam.maxZoom);
+      cam.clamp(W, H);
+    }
+  }
 
   const pointers = new Map();
   let pinch = null;

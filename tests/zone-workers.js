@@ -119,6 +119,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         );
       return {
         remaining: scenario.map.materialsTotal(scenario.map.at(id)),
+        demolished: scenario.map.at(id).demolished,
+        hidden: scenario.map.at(id).shape.hidden,
+        selectable: scenario.map.buildingAt(scenario.map.at(id).cx, scenario.map.at(id).cy),
         state: scenario.tasks.at(jobId).state,
         stock,
         carry,
@@ -127,6 +130,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       };
     }, salvage);
     assert.equal(salvageDone.remaining, 0);
+    assert.equal(salvageDone.demolished, true);
+    assert.equal(salvageDone.hidden, true);
+    assert.equal(salvageDone.selectable, null);
     assert.equal(salvageDone.state, 2);
     assert.equal(salvageDone.conserved, salvageDone.initial);
     assert.ok(salvageDone.stock > salvage.stock0);

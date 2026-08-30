@@ -1095,36 +1095,44 @@
         this.repairBuilding.hidden = record.hp >= record.maxHP;
         return;
       }
-      this.jobActions.hidden = record.use !== CFG.BUILDING_USE.ABANDONED;
+      const reachable = map.reachable(record);
+      this.jobActions.hidden = record.use !== CFG.BUILDING_USE.ABANDONED || !reachable;
       this.salvage.hidden = Boolean(job) || map.materialsTotal(record) <= 0;
       this.cancelJob.hidden = !job;
       this.priority.disabled = !job;
       this.priority.value = String(job ? job.priority : CFG.PRIORITY.NORMAL);
       const salvage = record.salvage;
-      this.detail.textContent =
-        "materiales M" +
-        salvage[R.WOOD] +
-        " · metal " +
-        salvage[R.METAL] +
-        " · ladrillo " +
-        salvage[R.BRICK] +
-        (job
-          ? " · " + job.assigned.length + "/" + job.capacity + " trabajadores"
-          : " · sin tarea") +
-        (job ? " · " + this._jobLabel(job) + " " + this._jobProgress(job, adaptations) + "%" : "") +
-        "\n" +
-        (record.revealed
-          ? "amenaza " +
-            record.infectedRemaining +
-            " · botín " +
-            map.lootTotal(record) +
-            " restante · búsqueda " +
-            Math.round((record.scavengeProgress / CFG.SCAVENGE.TICK_SECONDS) * 100) +
-            "%"
-          : "contenido y amenaza ocultos");
-      this.adaptActions.hidden = false;
+      this.detail.textContent = !reachable
+        ? "Sin acceso peatonal desde la base: no se asignarán trabajadores ni patrullas."
+        : "materiales M" +
+          salvage[R.WOOD] +
+          " · metal " +
+          salvage[R.METAL] +
+          " · ladrillo " +
+          salvage[R.BRICK] +
+          (job
+            ? " · " + job.assigned.length + "/" + job.capacity + " trabajadores"
+            : " · sin tarea") +
+          (job
+            ? " · " + this._jobLabel(job) + " " + this._jobProgress(job, adaptations) + "%"
+            : "") +
+          "\n" +
+          (record.revealed
+            ? "amenaza " +
+              record.infectedRemaining +
+              " · botín " +
+              map.lootTotal(record) +
+              " restante · búsqueda " +
+              Math.round((record.scavengeProgress / CFG.SCAVENGE.TICK_SECONDS) * 100) +
+              "%"
+            : "contenido y amenaza ocultos");
+      this.adaptActions.hidden = !reachable;
       const canAdapt =
-        record.use === CFG.BUILDING_USE.ABANDONED && record.revealed && record.cleared && !job;
+        reachable &&
+        record.use === CFG.BUILDING_USE.ABANDONED &&
+        record.revealed &&
+        record.cleared &&
+        !job;
       this.adaptUse.hidden = !canAdapt;
       this.adapt.hidden = !canAdapt;
       this.toggleBuilding.hidden = record.use === CFG.BUILDING_USE.ABANDONED;

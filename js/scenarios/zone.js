@@ -169,6 +169,13 @@
       this.world = world;
       this.nav = nav;
       this.map.prepare(world, nav);
+      this.map.onDemolished = (record) => {
+        if (this.selectedBuilding === record) this.selectedBuilding = null;
+        if (this.hoverBuilding === record) this.hoverBuilding = null;
+        this.ui.toast(record.name + " ha sido desmantelado.");
+        this.state.save();
+        this._markUI();
+      };
       this.regions.prepare();
       this.fortifications.prepare(world, nav);
       this.selectedBuilding = this.map.hq || this.map.recommended;
@@ -208,6 +215,7 @@
 
     maintain(_agents, dt) {
       this.state.advance(dt);
+      this.map.update(dt);
       this.adaptations.update(dt);
       this.defense.update(dt, performance.now() / 1000, this.nav);
       this.fortifications.update(dt);
@@ -646,6 +654,10 @@
 
     createSalvage() {
       if (!this.selectedBuilding) return false;
+      if (!this.map.reachable(this.selectedBuilding)) {
+        this.ui.toast("No hay una ruta peatonal desde la base hasta este edificio.");
+        return false;
+      }
       const job = this.tasks.postSalvage(this.selectedBuilding.id, CFG.PRIORITY.NORMAL);
       this.ui.toast(
         job
@@ -1590,6 +1602,7 @@
         selectedBuilding: this.selectedBuilding,
         selectedCanAdapt: Boolean(
           this.selectedBuilding &&
+          this.map.reachable(this.selectedBuilding) &&
           this.selectedBuilding !== this.map.hq &&
           this.selectedBuilding.use === CFG.BUILDING_USE.ABANDONED &&
           this.selectedBuilding.revealed &&

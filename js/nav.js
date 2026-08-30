@@ -1,4 +1,5 @@
-/* Navigation: a 20px cell grid over the whole world.
+/* Navigation: a configurable cell grid over the whole world (20px by
+   default, 10px for dense geographic Zone maps).
    Cell values: 0 = blocked (water, wall), 1 = land, 2 = building floor,
    3 = intact door. Interiors and intact doors block zombies but not
    humans; a broken door becomes plain land (nav.doorBroken). astar() and
@@ -12,7 +13,7 @@
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
 
-  const CELL = 20;
+  const DEFAULT_CELL = 20;
   const DIRS = [
     [1, 0, 1],
     [-1, 0, 1],
@@ -37,10 +38,11 @@
   }
 
   class Nav {
-    constructor(world) {
+    constructor(world, cellSize) {
       this.world = world;
-      this.w = world.w / CELL;
-      this.h = world.h / CELL;
+      this.cell = Math.max(8, Number(cellSize) || DEFAULT_CELL);
+      this.w = Math.ceil(world.w / this.cell);
+      this.h = Math.ceil(world.h / this.cell);
       this.n = this.w * this.h;
       this.val = new Uint8Array(this.n);
       this.val.fill(1); // land until proven otherwise
@@ -54,13 +56,16 @@
       this.fs = new Float32Array(this.n);
       this.from = new Int32Array(this.n);
       this.stamp = new Int32Array(this.n);
+      this.heapF = [];
+      this.heapI = [];
+      this.pathScratch = [];
       this.gen = 0;
       this.version = 0; // bumped when a door breaks; agents replan on change
     }
 
     idx(x, y) {
-      const ix = (x / CELL) | 0,
-        iy = (y / CELL) | 0;
+      const ix = (x / this.cell) | 0,
+        iy = (y / this.cell) | 0;
       if (ix < 0 || iy < 0 || ix >= this.w || iy >= this.h) return -1;
       return iy * this.w + ix;
     }
@@ -90,21 +95,22 @@
     }
     centerOf(i) {
       return {
-        x: ((i % this.w) + 0.5) * CELL,
-        y: (((i / this.w) | 0) + 0.5) * CELL,
+        x: ((i % this.w) + 0.5) * this.cell,
+        y: (((i / this.w) | 0) + 0.5) * this.cell,
       };
     }
 
     // mark a world rect's cells (cell centers inside the rect)
     markRect(x, y, w, h, v, onlyIf) {
-      const ix0 = Math.max(0, (x / CELL) | 0),
-        iy0 = Math.max(0, (y / CELL) | 0),
-        ix1 = Math.min(this.w - 1, ((x + w) / CELL) | 0),
-        iy1 = Math.min(this.h - 1, ((y + h) / CELL) | 0);
+      const cell = this.cell,
+        ix0 = Math.max(0, (x / cell) | 0),
+        iy0 = Math.max(0, (y / cell) | 0),
+        ix1 = Math.min(this.w - 1, ((x + w) / cell) | 0),
+        iy1 = Math.min(this.h - 1, ((y + h) / cell) | 0);
       for (let iy = iy0; iy <= iy1; iy++)
         for (let ix = ix0; ix <= ix1; ix++) {
-          const cx = (ix + 0.5) * CELL,
-            cy = (iy + 0.5) * CELL;
+          const cx = (ix + 0.5) * cell,
+            cy = (iy + 0.5) * cell;
           if (cx < x || cx >= x + w || cy < y || cy >= y + h) continue;
           const i = iy * this.w + ix;
           if (onlyIf === undefined || this.val[i] === onlyIf) this.val[i] = v;
@@ -123,14 +129,15 @@
         x1 = Math.max(x1, points[i].x);
         y1 = Math.max(y1, points[i].y);
       }
-      const ix0 = Math.max(0, (x0 / CELL) | 0),
-        iy0 = Math.max(0, (y0 / CELL) | 0),
-        ix1 = Math.min(this.w - 1, (x1 / CELL) | 0),
-        iy1 = Math.min(this.h - 1, (y1 / CELL) | 0);
+      const cell = this.cell,
+        ix0 = Math.max(0, (x0 / cell) | 0),
+        iy0 = Math.max(0, (y0 / cell) | 0),
+        ix1 = Math.min(this.w - 1, (x1 / cell) | 0),
+        iy1 = Math.min(this.h - 1, (y1 / cell) | 0);
       for (let iy = iy0; iy <= iy1; iy++)
         for (let ix = ix0; ix <= ix1; ix++) {
-          const x = (ix + 0.5) * CELL,
-            y = (iy + 0.5) * CELL;
+          const x = (ix + 0.5) * cell,
+            y = (iy + 0.5) * cell;
           if (!pointInPoly(x, y, points)) continue;
           const index = iy * this.w + ix;
           this.val[index] = value;
@@ -140,17 +147,18 @@
 
     markRoad(points, width) {
       if (!Array.isArray(points) || points.length < 2) return;
-      const radius = Math.max(CELL * 0.5, width * 0.5),
-        radiusCells = Math.max(1, Math.ceil(radius / CELL));
+      const cell = this.cell,
+        radius = Math.max(cell * 0.5, width * 0.5),
+        radiusCells = Math.max(1, Math.ceil(radius / cell));
       for (let p = 1; p < points.length; p++) {
         const a = points[p - 1],
           b = points[p],
           distance = Math.hypot(b.x - a.x, b.y - a.y),
-          steps = Math.max(1, Math.ceil(distance / (CELL * 0.5)));
+          steps = Math.max(1, Math.ceil(distance / (cell * 0.5)));
         for (let step = 0; step <= steps; step++) {
           const t = step / steps,
-            ix = ((a.x + (b.x - a.x) * t) / CELL) | 0,
-            iy = ((a.y + (b.y - a.y) * t) / CELL) | 0;
+            ix = ((a.x + (b.x - a.x) * t) / cell) | 0,
+            iy = ((a.y + (b.y - a.y) * t) / cell) | 0;
           for (let oy = -radiusCells; oy <= radiusCells; oy++)
             for (let ox = -radiusCells; ox <= radiusCells; ox++) {
               const nx = ix + ox,
@@ -223,24 +231,9 @@
       const river = this.world.river.pts,
         lake = this.world.lake.pts,
         ponds = this.world.ponds || [];
-      for (let iy = 0; iy < this.h; iy++)
-        for (let ix = 0; ix < this.w; ix++) {
-          const x = (ix + 0.5) * CELL,
-            y = (iy + 0.5) * CELL;
-          if (pointInPoly(x, y, river) || pointInPoly(x, y, lake)) {
-            const i = iy * this.w + ix;
-            this.val[i] = 0;
-            this.wm[i] = 1;
-            continue;
-          }
-          for (let i = 0; i < ponds.length; i++)
-            if (pointInPoly(x, y, ponds[i].pts)) {
-              const pi = iy * this.w + ix;
-              this.val[pi] = 0;
-              this.wm[pi] = 1;
-              break;
-            }
-        }
+      this.markPolygon(river, 0, true);
+      this.markPolygon(lake, 0, true);
+      for (let i = 0; i < ponds.length; i++) this.markPolygon(ponds[i].pts, 0, true);
     }
 
     // clear straight-line travel (cell-by-cell) between two world points;
@@ -267,8 +260,9 @@
        Diagonal moves never cut corners. Returns a simplified path as an
        array of world-space {x,y} waypoints (start excluded) or null when
        the target is unreachable. swim: water cells become passable at
-       4x cost — the swim is only taken when it beats the detour (the
-       unit-cost heuristic stays admissible, so the path stays optimal). */
+       4x cost — the swim is only taken when it beats the detour. Dense
+       geographic maps use a mild weighted heuristic so long city routes
+       resolve promptly; the classic grid keeps the optimal heuristic. */
     astar(x1, y1, x2, y2, isZombie, maxExpand, swim) {
       const si = this.idx(x1, y1),
         ti = this.idx(x2, y2);
@@ -292,7 +286,8 @@
         w = this.w,
         H = this.h;
       const tix = ti % w,
-        tiy = (ti / w) | 0;
+        tiy = (ti / w) | 0,
+        heuristicWeight = this.cell < DEFAULT_CELL ? 1.35 : 1;
       const h = (i) => {
         const dx = Math.abs((i % w) - tix),
           dy = Math.abs(((i / w) | 0) - tiy);
@@ -303,53 +298,56 @@
         (v >= 2 && (!isZombie || inB) && !(v === 3 && isZombie)) ||
         (swim && v === 0 && wm[ni] === 1);
 
-      // binary min-heap of [f, i]; stale entries are skipped on pop
-      const heap = [];
+      // Parallel reusable arrays avoid allocating one [f, i] pair for every
+      // discovered node. Stale entries are still skipped on pop.
+      const heapF = this.heapF,
+        heapI = this.heapI;
+      let heapN = 0;
       const push = (f, i) => {
-        heap.push([f, i]);
-        let c = heap.length - 1;
+        let c = heapN++;
         while (c > 0) {
           const p = (c - 1) >> 1;
-          if (heap[p][0] <= heap[c][0]) break;
-          const t = heap[p];
-          heap[p] = heap[c];
-          heap[c] = t;
+          if (heapF[p] <= f) break;
+          heapF[c] = heapF[p];
+          heapI[c] = heapI[p];
           c = p;
         }
-      };
-      const pop = () => {
-        const top = heap[0],
-          last = heap.pop();
-        if (heap.length) {
-          heap[0] = last;
-          let p = 0;
-          for (;;) {
-            const l = p * 2 + 1,
-              r = l + 1;
-            let m = p;
-            if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
-            if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
-            if (m === p) break;
-            const t = heap[m];
-            heap[m] = heap[p];
-            heap[p] = t;
-            p = m;
-          }
-        }
-        return top;
+        heapF[c] = f;
+        heapI[c] = i;
       };
 
       stamp[si] = gen;
       g[si] = 0;
-      fs[si] = h(si);
+      fs[si] = h(si) * heuristicWeight;
       push(fs[si], si);
       let expanded = 0;
 
-      const budget = maxExpand || Math.min(this.n, 12000);
-      while (heap.length) {
-        const cur = pop();
-        const i = cur[1];
-        if (stamp[i] !== gen || cur[0] > fs[i] + 1e-4) continue;
+      // Preserve roughly the same searchable world area when a dense map
+      // uses cells smaller than the classic 20px grid.
+      const scaledBudget = Math.round(12000 * (DEFAULT_CELL / this.cell) ** 2),
+        budget = maxExpand || Math.min(this.n, scaledBudget);
+      while (heapN) {
+        const curF = heapF[0],
+          i = heapI[0];
+        heapN--;
+        if (heapN > 0) {
+          const lastF = heapF[heapN],
+            lastI = heapI[heapN];
+          let p = 0;
+          for (;;) {
+            const l = p * 2 + 1;
+            if (l >= heapN) break;
+            const r = l + 1,
+              m = r < heapN && heapF[r] < heapF[l] ? r : l;
+            if (heapF[m] >= lastF) break;
+            heapF[p] = heapF[m];
+            heapI[p] = heapI[m];
+            p = m;
+          }
+          heapF[p] = lastF;
+          heapI[p] = lastI;
+        }
+        if (stamp[i] !== gen || curF > fs[i] + 1e-4) continue;
         if (i === ti) break;
         if (++expanded > budget) return null;
         const ix = i % w,
@@ -374,7 +372,7 @@
           stamp[ni] = gen;
           g[ni] = ng;
           from[ni] = i;
-          fs[ni] = ng + h(ni);
+          fs[ni] = ng + h(ni) * heuristicWeight;
           push(fs[ni], ni);
         }
       }
@@ -382,7 +380,8 @@
       if (stamp[ti] !== gen) return null;
 
       // walk back, drop collinear points, map to world coords
-      const raw = [];
+      const raw = this.pathScratch;
+      raw.length = 0;
       let i = ti;
       while (i !== si) {
         raw.push(i);

@@ -516,6 +516,35 @@
     }
 
     clearOfWater(x, y, w, h, pad) {
+      // Once nav.markWater() has run, its compact water mask is both the
+      // cheapest and the most relevant answer: it is the same raster the
+      // agents use. Scan only the padded footprint instead of testing ten
+      // perimeter points against every river sample and polygon. Large Zone
+      // maps can attempt hundreds of building placements, so the geometric
+      // fallback below otherwise grows with both map size and attempt count.
+      const nav = this.nav;
+      if (nav && nav.wm) {
+        const navCell = nav.cell,
+          x0 = x - pad,
+          y0 = y - pad,
+          x1 = x + w + pad,
+          y1 = y + h + pad,
+          ix0 = Math.max(0, Math.floor(x0 / navCell)),
+          iy0 = Math.max(0, Math.floor(y0 / navCell)),
+          ix1 = Math.min(nav.w - 1, Math.floor(x1 / navCell)),
+          iy1 = Math.min(nav.h - 1, Math.floor(y1 / navCell)),
+          pad2 = pad * pad;
+        for (let iy = iy0; iy <= iy1; iy++)
+          for (let ix = ix0; ix <= ix1; ix++) {
+            if (nav.wm[iy * nav.w + ix] !== 1) continue;
+            const cx = (ix + 0.5) * navCell,
+              cy = (iy + 0.5) * navCell,
+              dx = cx < x ? x - cx : cx > x + w ? cx - (x + w) : 0,
+              dy = cy < y ? y - cy : cy > y + h ? cy - (y + h) : 0;
+            if (dx * dx + dy * dy <= pad2) return false;
+          }
+        return true;
+      }
       for (const p of this.perimeterPoints(x, y, w, h, 10)) {
         if (this.nearRiver(p.x, p.y, pad) || this.inLake(p.x, p.y, -pad)) return false;
         for (const pd of this.ponds) {
@@ -703,12 +732,40 @@
             y1: building.y + building.h,
           };
         if (!inChunk(bounds, 4)) continue;
-        g.fillStyle = "rgba(198,182,150,0.30)";
+        const tint = ((building.seed || 0) % 9) / 8;
+        g.fillStyle =
+          "rgba(" +
+          ((196 - tint * 22) | 0) +
+          "," +
+          ((174 - tint * 10) | 0) +
+          "," +
+          ((140 + tint * 12) | 0) +
+          ",0.42)";
         if (building.footprint) fillPolygon(building.footprint);
         else
           for (let j = 0; j < building.rooms.length; j++) {
             const room = building.rooms[j];
             g.fillRect(room[0], room[1], room[2], room[3]);
+          }
+        if (building.inner) {
+          g.fillStyle = "rgba(92,72,50,0.055)";
+          fillPolygon(building.inner);
+        }
+        g.strokeStyle = "rgba(92,72,50,0.15)";
+        g.lineWidth = 1;
+        if (building.ridge) {
+          g.beginPath();
+          g.moveTo(building.ridge.x1, building.ridge.y1);
+          g.lineTo(building.ridge.x2, building.ridge.y2);
+          g.stroke();
+        }
+        if (building.hatches)
+          for (let j = 0; j < building.hatches.length; j++) {
+            const h = building.hatches[j];
+            g.beginPath();
+            g.moveTo(h.x1, h.y1);
+            g.lineTo(h.x2, h.y2);
+            g.stroke();
           }
       }
       g.strokeStyle = "rgba(60,50,40,0.45)";
@@ -928,6 +985,40 @@
 
       // building floors: one warm wash under the boiling walls
       for (const b of this.buildings) {
+        if (b.footprint) {
+          const p = new Path2D(),
+            pts = b.footprint,
+            tint = ((b.seed || 0) % 9) / 8;
+          p.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) p.lineTo(pts[i].x, pts[i].y);
+          p.closePath();
+          g.fillStyle =
+            "rgba(" +
+            ((196 - tint * 22) | 0) +
+            "," +
+            ((174 - tint * 10) | 0) +
+            "," +
+            ((140 + tint * 12) | 0) +
+            ",0.40)";
+          g.fill(p);
+          g.strokeStyle = "rgba(92,72,50,0.16)";
+          g.lineWidth = 1;
+          if (b.ridge) {
+            g.beginPath();
+            g.moveTo(b.ridge.x1, b.ridge.y1);
+            g.lineTo(b.ridge.x2, b.ridge.y2);
+            g.stroke();
+          }
+          if (b.hatches)
+            for (let j = 0; j < b.hatches.length; j++) {
+              const h = b.hatches[j];
+              g.beginPath();
+              g.moveTo(h.x1, h.y1);
+              g.lineTo(h.x2, h.y2);
+              g.stroke();
+            }
+          continue;
+        }
         const p = new Path2D();
         for (const r of b.rooms) p.rect(r[0], r[1], r[2], r[3]);
         g.fillStyle = "rgba(198,182,150,0.30)";

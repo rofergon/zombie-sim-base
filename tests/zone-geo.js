@@ -133,6 +133,7 @@ function osmFixture() {
       heightGrid: Boolean(ZS.debug.nav.height),
       overviewWidth: ZS.debug.world.overviewCanvas.width,
       maxCanvas: Math.max(ZS.debug.world.canvas.width, ZS.debug.world.canvas.height),
+      navCell: ZS.debug.nav.cell,
     }));
     assert.deepEqual(loaded, {
       width: 7200,
@@ -145,8 +146,72 @@ function osmFixture() {
       heightGrid: true,
       overviewWidth: 1024,
       maxCanvas: 1,
+      navCell: 10,
+    });
+    const access = await page.evaluate(() => {
+      const scenario = ZS.scenario,
+        nav = ZS.debug.nav,
+        buildings = scenario.map.records,
+        validDoors = buildings.every((record) => {
+          const door = record.shape.door;
+          if (!door || nav.val[door.frontIdx] !== 1) return false;
+          const frontX = door.frontIdx % nav.w,
+            frontY = (door.frontIdx / nav.w) | 0;
+          return door.cells.some((index) => {
+            const x = index % nav.w,
+              y = (index / nav.w) | 0;
+            return nav.val[index] === 3 && Math.abs(x - frontX) + Math.abs(y - frontY) === 1;
+          });
+        }),
+        other = buildings.find((record) => record !== scenario.map.recommended),
+        frontPath = nav.astar(
+          scenario.map.recommended.shape.door.front.x,
+          scenario.map.recommended.shape.door.front.y,
+          other.shape.door.front.x,
+          other.shape.door.front.y,
+          false,
+        ),
+        interiorPaths = buildings.map((record) =>
+          Boolean(
+            nav.astar(
+              record.shape.door.inner.x,
+              record.shape.door.inner.y,
+              record.shape.door.front.x,
+              record.shape.door.front.y,
+              false,
+            ),
+          ),
+        );
+      return {
+        validDoors,
+        frontConnected: Boolean(frontPath && frontPath.length),
+        accessIds: buildings.map((record) => record.shape.door.accessId),
+        interiorPaths,
+      };
+    });
+    assert.deepEqual(access, {
+      validDoors: true,
+      frontConnected: true,
+      accessIds: [0, 0],
+      interiorPaths: [true, true],
     });
     await page.locator("#zone-hq-action").click();
+    const routeJob = await page.evaluate(() => {
+      const scenario = ZS.scenario,
+        target = scenario.map.records.find((record) => record !== scenario.map.hq),
+        initial = scenario.map.materialsTotal(target),
+        job = scenario.tasks.postSalvage(target.id, ZS.ZoneConfig.PRIORITY.HIGH);
+      return { targetId: target.id, initial, jobId: job.id };
+    });
+    await page.evaluate(() => ZS.recording.advance(30));
+    const routeProgress = await page.evaluate(({ targetId, jobId }) => {
+      const scenario = ZS.scenario;
+      return {
+        remaining: scenario.map.materialsTotal(scenario.map.at(targetId)),
+        state: scenario.tasks.at(jobId).state,
+      };
+    }, routeJob);
+    assert.ok(routeProgress.remaining < routeJob.initial || routeProgress.state === 2);
     await page.locator('[data-system="expedition"]').click();
     assert.equal(await page.locator("[data-expedition-region]").count(), 25);
     const enabled = page.locator("[data-expedition-region]:not(:disabled)").first();

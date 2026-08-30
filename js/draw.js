@@ -10,6 +10,20 @@
   const visibleTrees = [];
   const visibleBuildings = [];
   const visibleWaters = [];
+  const sceneList = [];
+  const TREE_POLY = Array.from({ length: 8 }, () => ({ x: 0, y: 0 }));
+
+  function addSceneItem(index, y, kind, object) {
+    let item = sceneList[index];
+    if (!item) {
+      item = { y, k: kind, o: object };
+      sceneList[index] = item;
+    } else {
+      item.y = y;
+      item.k = kind;
+      item.o = object;
+    }
+  }
 
   /* ---------- world furniture ---------- */
 
@@ -86,10 +100,11 @@
     ZS.wline(c, tr.x, tr.y + 2, tr.x + ZS.sjit(tr.seed) * 2, cy + tr.r * 0.55, tr.seed + 5, 0.7);
 
     // canopy: jittered blob, green wash under a darker outline
-    const pts = [];
+    const pts = TREE_POLY;
     for (let i = 0; i < 8; i++) {
       const an = (i / 8) * Math.PI * 2;
-      pts.push({ x: cx + Math.cos(an) * tr.pts[i], y: cy + Math.sin(an) * tr.pts[i] * 0.92 });
+      pts[i].x = cx + Math.cos(an) * tr.pts[i];
+      pts[i].y = cy + Math.sin(an) * tr.pts[i] * 0.92;
     }
     c.lineCap = "round";
     c.strokeStyle = "rgba(74,108,48,0.8)";
@@ -105,177 +120,265 @@
     ZS.wcirc(c, cx - tr.r * 0.2, cy - tr.r * 0.15, tr.r * 0.45, tr.seed + 31, 0.5);
   }
 
-  // buildings: pre-rendered floor wash underneath; boiling wall runs and
-  // the door (leaf, damage scratches, or splinters when broken) per frame
+  // reused oriented quads — no per-frame allocs in the building pass
+  const QUAD = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+
+  function orientRect(out, x, y, tx, ty, nx, ny, hw, ht) {
+    out[0].x = x - tx * hw - nx * ht;
+    out[0].y = y - ty * hw - ny * ht;
+    out[1].x = x + tx * hw - nx * ht;
+    out[1].y = y + ty * hw - ny * ht;
+    out[2].x = x + tx * hw + nx * ht;
+    out[2].y = y + ty * hw + ny * ht;
+    out[3].x = x - tx * hw + nx * ht;
+    out[3].y = y - ty * hw + ny * ht;
+  }
+
+  // buildings: pre-rendered floor wash underneath; boiling walls, roof
+  // ridge, windows and the door (leaf, damage, or splinters) per frame
   function drawBuilding(c, b) {
     c.lineCap = "round";
-    c.strokeStyle = "rgba(92,72,50,0.8)";
-    c.lineWidth = 2;
+    c.lineJoin = "round";
     if (b.footprint) {
-      ZS.wpoly(c, b.footprint, b.seed + 311, 1.05, true);
+      c.save();
+      c.translate(1.15, 1.85);
+      c.strokeStyle = "rgba(92,72,50,0.2)";
+      c.lineWidth = 2.2;
+      ZS.wpoly(c, b.footprint, b.seed + 211, 0.65, true);
       c.stroke();
-    } else
+      c.restore();
+      drawFootprintWalls(c, b);
+      if (b.inner) {
+        c.strokeStyle = "rgba(92,72,50,0.3)";
+        c.lineWidth = 1.05;
+        ZS.wpoly(c, b.inner, b.seed + 411, 0.55, true);
+        c.stroke();
+      }
+      if (b.ridge) {
+        c.strokeStyle = "rgba(92,72,50,0.38)";
+        c.lineWidth = 1.15;
+        ZS.wline(c, b.ridge.x1, b.ridge.y1, b.ridge.x2, b.ridge.y2, b.seed + 17, 0.55);
+      }
+    } else {
+      c.strokeStyle = "rgba(92,72,50,0.8)";
+      c.lineWidth = 2;
       for (let i = 0; i < b.runs.length; i++) {
         const r = b.runs[i];
         ZS.wline(c, r.x1, r.y1, r.x2, r.y2, b.seed + i * 3.1, 1.1);
       }
+    }
+    if (b.windows) drawWindows(c, b);
     if (b.door) drawDoor(c, b, b.door);
   }
 
+  function drawFootprintWalls(c, b) {
+    const pts = b.footprint,
+      n = pts.length,
+      door = b.door;
+    c.strokeStyle = "rgba(92,72,50,0.84)";
+    c.lineWidth = 1.75;
+    const a0 = pts[0],
+      z = pts[n - 1],
+      closed = Math.abs(a0.x - z.x) < 0.05 && Math.abs(a0.y - z.y) < 0.05,
+      edges = closed ? n - 1 : n;
+    for (let i = 0; i < edges; i++) {
+      const a = pts[i],
+        p = pts[(i + 1) % n],
+        dx = p.x - a.x,
+        dy = p.y - a.y;
+      if (dx * dx + dy * dy < 4) continue;
+      if (door && door.edge === i && door.tx != null) {
+        const gap = (door.hw || 5.6) + 1.3,
+          elen = Math.hypot(dx, dy);
+        if (gap * 2 < elen - 3) {
+          ZS.wline(
+            c,
+            a.x,
+            a.y,
+            door.x - door.tx * gap,
+            door.y - door.ty * gap,
+            b.seed + i * 3.1,
+            0.8,
+          );
+          ZS.wline(
+            c,
+            door.x + door.tx * gap,
+            door.y + door.ty * gap,
+            p.x,
+            p.y,
+            b.seed + i * 3.1 + 1.7,
+            0.8,
+          );
+          continue;
+        }
+      }
+      ZS.wline(c, a.x, a.y, p.x, p.y, b.seed + i * 3.1, 0.85);
+    }
+  }
+
+  function drawWindows(c, b) {
+    const ws = b.windows;
+    c.fillStyle = "rgba(236,226,200,0.58)";
+    c.strokeStyle = "rgba(84,56,26,0.5)";
+    c.lineWidth = 0.85;
+    for (let i = 0; i < ws.length; i++) {
+      const w = ws[i];
+      orientRect(QUAD, w.x, w.y, w.tx, w.ty, w.nx, w.ny, w.hw, w.ht);
+      ZS.wpoly(c, QUAD, b.seed + 90 + i * 5.3, 0.28, true);
+      c.fill();
+      c.stroke();
+    }
+  }
+
   function drawDoor(c, b, d) {
-    const seed = b.seed + 55;
-    const hz = d.face === "n" || d.face === "s";
+    const seed = b.seed + 55,
+      tx = d.tx != null ? d.tx : d.face === "e" || d.face === "w" ? 0 : 1,
+      ty = d.ty != null ? d.ty : d.face === "e" || d.face === "w" ? 1 : 0,
+      nx = d.nx != null ? d.nx : d.face === "e" ? 1 : d.face === "w" ? -1 : 0,
+      ny = d.ny != null ? d.ny : d.face === "s" ? 1 : d.face === "n" ? -1 : 0,
+      hw = d.hw != null ? d.hw : 19,
+      ht = d.ht != null ? d.ht : 9,
+      sh = d.shake > 0 ? Math.min(1, d.shake * 6) : 0,
+      x = d.x + nx * sh * ZS.jit(seed) * 1.4,
+      y = d.y + ny * sh * ZS.jit(seed + 1) * 1.4,
+      amp = hw > 10 ? 0.7 : 0.35;
     c.lineCap = "round";
-    // while something gnaws, the whole leaf shakes
-    const sh = d.shake > 0 ? Math.min(1, d.shake * 6) : 0;
-    const x = d.x + (hz ? 0 : sh * ZS.jit(seed) * 1.6);
-    const y = d.y + (hz ? sh * ZS.jit(seed + 1) * 1.6 : 0);
     if (!d.broken) {
       const dmg = 1 - d.hp / d.maxHp;
-      // wooden leaf filling the opening
-      const p = hz
-        ? [
-            { x: x - 19, y: y - 9 },
-            { x: x + 19, y: y - 9 },
-            { x: x + 19, y: y + 9 },
-            { x: x - 19, y: y + 9 },
-          ]
-        : [
-            { x: x - 9, y: y - 19 },
-            { x: x + 9, y: y - 19 },
-            { x: x + 9, y: y + 19 },
-            { x: x - 9, y: y + 19 },
-          ];
-      ZS.wpoly(c, p, seed, 0.9, true);
-      c.fillStyle = "rgba(138,98,52," + (0.42 + dmg * 0.25).toFixed(2) + ")";
+      orientRect(QUAD, x, y, tx, ty, nx, ny, hw, ht);
+      ZS.wpoly(c, QUAD, seed, amp, true);
+      c.fillStyle = "rgba(138,98,52," + (0.5 + dmg * 0.25).toFixed(2) + ")";
       c.fill();
-      c.strokeStyle = "rgba(84,56,26,0.85)";
-      c.lineWidth = 1.6;
+      c.strokeStyle = "rgba(84,56,26,0.88)";
+      c.lineWidth = hw > 10 ? 1.6 : 1.15;
       c.stroke();
-      // planks + X brace
       c.strokeStyle = "rgba(84,56,26,0.5)";
-      c.lineWidth = 1;
-      if (hz) {
-        ZS.wline(c, x - 17, y - 4.5, x + 17, y - 4.5, seed + 2, 0.5);
-        ZS.wline(c, x - 17, y + 4.5, x + 17, y + 4.5, seed + 3, 0.5);
-        ZS.wline(c, x - 15, y - 7.5, x + 15, y + 7.5, seed + 4, 0.6);
-        ZS.wline(c, x - 15, y + 7.5, x + 15, y - 7.5, seed + 5, 0.6);
-      } else {
-        ZS.wline(c, x - 4.5, y - 17, x - 4.5, y + 17, seed + 2, 0.5);
-        ZS.wline(c, x + 4.5, y - 17, x + 4.5, y + 17, seed + 3, 0.5);
-        ZS.wline(c, x - 7.5, y - 15, x + 7.5, y + 15, seed + 4, 0.6);
-        ZS.wline(c, x - 7.5, y + 15, x + 7.5, y - 15, seed + 5, 0.6);
-      }
-      // knob
+      c.lineWidth = hw > 10 ? 1 : 0.8;
+      const px = tx * hw * 0.72,
+        py = ty * hw * 0.72,
+        qx = nx * ht * 0.55,
+        qy = ny * ht * 0.55;
+      ZS.wline(c, x - px - qx, y - py - qy, x + px - qx, y + py - qy, seed + 2, amp * 0.7);
+      ZS.wline(c, x - px + qx, y - py + qy, x + px + qx, y + py + qy, seed + 3, amp * 0.7);
+      ZS.wline(c, x - px - qx, y - py - qy, x + px + qx, y + py + qy, seed + 4, amp * 0.8);
+      ZS.wline(c, x - px + qx, y - py + qy, x + px - qx, y + py - qy, seed + 5, amp * 0.8);
       c.strokeStyle = "rgba(84,56,26,0.9)";
-      c.lineWidth = 1.1;
-      ZS.wcirc(c, x + (hz ? 13 : 0), y + (hz ? 0 : 13), 1.8, seed + 7, 0.3);
-      // damage: scratches, then a proper crack
+      c.lineWidth = 1;
+      ZS.wcirc(
+        c,
+        x + tx * hw * 0.52 + nx * ht * 0.12,
+        y + ty * hw * 0.52 + ny * ht * 0.12,
+        hw > 10 ? 1.8 : 1.05,
+        seed + 7,
+        0.22,
+      );
       if (dmg > 0.15) {
         c.strokeStyle = "rgba(60,40,18,0.6)";
-        c.lineWidth = 1;
+        c.lineWidth = 0.95;
         const k = dmg > 0.6 ? 3 : 2;
         for (let i = 0; i < k; i++) {
-          const off = -10 + i * 8 + ZS.sjit(seed + i) * 3;
-          if (hz) ZS.wline(c, x + off, y - 4, x + off + 3, y + 4, seed + 20 + i, 0.5);
-          else ZS.wline(c, x - 4, y + off, x + 4, y + off + 3, seed + 20 + i, 0.5);
+          const off = -hw * 0.45 + i * hw * 0.4 + ZS.sjit(seed + i) * 1.4;
+          ZS.wline(
+            c,
+            x + tx * off - nx * ht * 0.45,
+            y + ty * off - ny * ht * 0.45,
+            x + tx * (off + 1.4) + nx * ht * 0.45,
+            y + ty * (off + 1.4) + ny * ht * 0.45,
+            seed + 20 + i,
+            0.35,
+          );
         }
       }
       if (dmg > 0.55) {
         c.strokeStyle = "rgba(40,26,10,0.7)";
-        c.lineWidth = 1.2;
-        if (hz) {
-          ZS.wline(c, x - 4, y - 9, x - 1, y - 1, seed + 61, 0.7);
-          ZS.wline(c, x - 1, y - 1, x + 2, y + 9, seed + 62, 0.7);
-        } else {
-          ZS.wline(c, x - 9, y - 4, x - 1, y - 1, seed + 61, 0.7);
-          ZS.wline(c, x - 1, y - 1, x + 9, y + 2, seed + 62, 0.7);
-        }
+        c.lineWidth = 1.1;
+        ZS.wline(
+          c,
+          x - tx * hw * 0.2 - nx * ht,
+          y - ty * hw * 0.2 - ny * ht,
+          x + tx * hw * 0.15,
+          y + ty * hw * 0.15,
+          seed + 61,
+          0.45,
+        );
+        ZS.wline(
+          c,
+          x + tx * hw * 0.15,
+          y + ty * hw * 0.15,
+          x + tx * hw * 0.35 + nx * ht,
+          y + ty * hw * 0.35 + ny * ht,
+          seed + 62,
+          0.45,
+        );
       }
     } else {
-      // broken: leaves swung open off their hinges + splinters + debris
-      const dy = d.face === "n" ? -1 : 1,
-        dx = d.face === "w" ? -1 : 1;
+      const swing = ht * 2.4;
       c.fillStyle = "rgba(120,84,40,0.5)";
       c.strokeStyle = "rgba(84,56,26,0.8)";
-      c.lineWidth = 1.4;
-      if (hz) {
-        ZS.wpoly(
-          c,
-          [
-            { x: x - 19, y },
-            { x: x - 24, y: y + dy * 13 },
-            { x: x - 16, y: y + dy * 13 },
-            { x: x - 11, y },
-          ],
-          seed + 71,
-          0.6,
-          true,
-        );
-        c.fill();
-        c.stroke();
-        ZS.wpoly(
-          c,
-          [
-            { x: x + 19, y },
-            { x: x + 24, y: y + dy * 13 },
-            { x: x + 16, y: y + dy * 13 },
-            { x: x + 11, y },
-          ],
-          seed + 72,
-          0.6,
-          true,
-        );
-        c.fill();
-        c.stroke();
-      } else {
-        ZS.wpoly(
-          c,
-          [
-            { x, y: y - 19 },
-            { x: x + dx * 13, y: y - 24 },
-            { x: x + dx * 13, y: y - 16 },
-            { x, y: y - 11 },
-          ],
-          seed + 71,
-          0.6,
-          true,
-        );
-        c.fill();
-        c.stroke();
-        ZS.wpoly(
-          c,
-          [
-            { x, y: y + 19 },
-            { x: x + dx * 13, y: y + 24 },
-            { x: x + dx * 13, y: y + 16 },
-            { x, y: y + 11 },
-          ],
-          seed + 72,
-          0.6,
-          true,
-        );
-        c.fill();
-        c.stroke();
-      }
-      c.strokeStyle = "rgba(92,72,50,0.8)";
-      c.lineWidth = 1.6;
-      if (hz) {
-        ZS.wline(c, x - 20, y, x - 8, y - 9, seed + 31, 0.6);
-        ZS.wline(c, x - 20, y, x - 9, y + 7, seed + 33, 0.6);
-        ZS.wline(c, x + 20, y, x + 8, y + 9, seed + 37, 0.6);
-        ZS.wline(c, x + 20, y, x + 9, y - 7, seed + 39, 0.6);
-      } else {
-        ZS.wline(c, x, y - 20, x - 9, y - 8, seed + 31, 0.6);
-        ZS.wline(c, x, y - 20, x + 7, y - 9, seed + 33, 0.6);
-        ZS.wline(c, x, y + 20, x + 9, y + 8, seed + 37, 0.6);
-        ZS.wline(c, x, y + 20, x - 7, y + 9, seed + 39, 0.6);
-      }
+      c.lineWidth = hw > 10 ? 1.4 : 1.05;
+      orientRect(
+        QUAD,
+        x - tx * hw * 0.55 + nx * swing * 0.45,
+        y - ty * hw * 0.55 + ny * swing * 0.45,
+        tx,
+        ty,
+        nx,
+        ny,
+        hw * 0.38,
+        ht * 0.7,
+      );
+      ZS.wpoly(c, QUAD, seed + 71, amp, true);
+      c.fill();
+      c.stroke();
+      orientRect(
+        QUAD,
+        x + tx * hw * 0.55 + nx * swing * 0.45,
+        y + ty * hw * 0.55 + ny * swing * 0.45,
+        tx,
+        ty,
+        nx,
+        ny,
+        hw * 0.38,
+        ht * 0.7,
+      );
+      ZS.wpoly(c, QUAD, seed + 72, amp, true);
+      c.fill();
+      c.stroke();
+      c.strokeStyle = "rgba(92,72,50,0.75)";
+      c.lineWidth = hw > 10 ? 1.5 : 1.05;
+      ZS.wline(
+        c,
+        x - tx * hw,
+        y - ty * hw,
+        x - tx * hw * 0.4 - nx * ht * 1.6,
+        y - ty * hw * 0.4 - ny * ht * 1.6,
+        seed + 31,
+        amp,
+      );
+      ZS.wline(
+        c,
+        x + tx * hw,
+        y + ty * hw,
+        x + tx * hw * 0.4 + nx * ht * 1.6,
+        y + ty * hw * 0.4 + ny * ht * 1.6,
+        seed + 37,
+        amp,
+      );
       c.fillStyle = "rgba(92,72,50,0.5)";
       for (let i = 0; i < 3; i++) {
-        const ox = ZS.sjit(seed + 50 + i) * 14;
-        const oy = ZS.sjit(seed + 53 + i) * 14;
-        ZS.wcirc(c, x + (hz ? ox : 0), y + (hz ? 0 : oy), 1.2, seed + 41 + i, 0.3);
+        ZS.wcirc(
+          c,
+          x + tx * ZS.sjit(seed + 50 + i) * hw + nx * ZS.sjit(seed + 60 + i) * ht,
+          y + ty * ZS.sjit(seed + 50 + i) * hw + ny * ZS.sjit(seed + 60 + i) * ht,
+          1.05,
+          seed + 41 + i,
+          0.25,
+        );
       }
     }
   }
@@ -468,32 +571,34 @@
     if (world.stains) world.stains.draw(c, vis);
 
     // everything that has height, painted back-to-front
-    const list = [];
+    const list = sceneList;
+    let listN = 0;
     const trees = world.queryVisible ? world.queryVisible("trees", vis, visibleTrees) : world.trees;
     for (const tr of trees) {
       if (tr.x < vis.x0 || tr.x > vis.x1 || tr.y < vis.y0 - tr.r * 2 || tr.y > vis.y1) continue;
-      list.push({ y: tr.y, k: 0, o: tr });
+      addSceneItem(listN++, tr.y, 0, tr);
     }
     const buildings = world.queryVisible
       ? world.queryVisible("buildings", vis, visibleBuildings)
       : world.buildings;
     for (const b of buildings) {
       if (b.x + b.w < vis.x0 || b.x > vis.x1 || b.y + b.h < vis.y0 || b.y > vis.y1) continue;
-      list.push({ y: b.y + b.h, k: 1, o: b });
+      addSceneItem(listN++, b.y + b.h, 1, b);
     }
     for (const b of world.blocks ? world.blocks.list : []) {
       if (b.x1 < vis.x0 || b.x0 > vis.x1 || b.by < vis.y0 || b.y0 > vis.y1) continue;
-      list.push({ y: b.by, k: 3, o: b });
+      addSceneItem(listN++, b.by, 3, b);
     }
     for (const a of sim.agents) {
       if (a.x < vis.x0 || a.x > vis.x1 || a.y < vis.y0 || a.y > vis.y1) continue;
-      list.push({ y: a.y, k: 2, o: a });
+      addSceneItem(listN++, a.y, 2, a);
     }
+    list.length = listN;
     list.sort((p, q) => p.y - q.y);
     for (const it of list) {
       if (it.k === 0) drawTree(c, it.o, t);
       else if (it.k === 1) {
-        drawBuilding(c, it.o);
+        if (!it.o.hidden) drawBuilding(c, it.o);
         if (ZS.scenario.drawBuildingOverlay) ZS.scenario.drawBuildingOverlay(c, it.o, t);
       } else if (it.k === 3) ZS.scenario.drawBlock(c, it.o, t);
       else ZS.scenario.draw(c, it.o, t);

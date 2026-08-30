@@ -49,7 +49,13 @@
 
     postSalvage(buildingId, priority) {
       const record = this.map.at(buildingId);
-      if (!record || record === this.map.hq || this.map.materialsTotal(record) <= 0) return null;
+      if (
+        !record ||
+        !this.map.reachable(record) ||
+        record === this.map.hq ||
+        this.map.materialsTotal(record) <= 0
+      )
+        return null;
       const current = this.forBuilding(buildingId);
       if (current) return current;
       const job = {
@@ -74,7 +80,8 @@
 
     postBuild(buildingId, use, cost) {
       const record = this.map.at(buildingId);
-      if (!record || this.forBuilding(buildingId) || !Array.isArray(cost)) return null;
+      if (!this.map.reachable(record) || this.forBuilding(buildingId) || !Array.isArray(cost))
+        return null;
       for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < (cost[i] || 0)) return null;
       const reserved = Array.from({ length: R.COUNT }, () => 0);
       for (let i = 0; i < R.COUNT; i++) {
@@ -102,6 +109,8 @@
     }
 
     postProduction(buildingId) {
+      const record = this.map.at(buildingId);
+      if (!this.map.reachable(record)) return null;
       const current = this.forBuilding(buildingId);
       if (current) return current;
       const job = {
@@ -159,6 +168,11 @@
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
         if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
+        const target = this.map.at(job.targetId);
+        if (!this.map.reachable(target)) {
+          this.cancel(job.id);
+          continue;
+        }
         for (let j = job.assigned.length - 1; j >= 0; j--) {
           const worker = this.citizens.at(job.assigned[j]);
           if (worker && this.citizens.carryTotal(worker) > 0) continue;
@@ -251,6 +265,8 @@
         const record = this.map.at(job.targetId);
         if (!this.adaptations || !this.adaptations.complete(record, job.buildUse)) return false;
         for (let i = 0; i < R.COUNT; i++) job.reserved[i] = 0;
+      } else if (job.type === CFG.JOB.SALVAGE) {
+        this.map.startDemolition(this.map.at(job.targetId));
       }
       job.state = CFG.JOB_STATE.COMPLETE;
       if (job.type === CFG.JOB.BUILD && this.adaptations) this.adaptations.ensureProductionJobs();

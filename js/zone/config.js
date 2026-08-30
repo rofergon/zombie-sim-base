@@ -149,6 +149,7 @@
       TERRAIN_URL: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium",
       TERRAIN_ZOOM: 14,
       ELEVATION_SAMPLES: 9,
+      NAV_CELL: 10,
       REQUEST_TIMEOUT_MS: 45000,
       MAP_PACK_VERSION: 1,
       CACHE_DB: "zs-zone-maps",

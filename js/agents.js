@@ -21,6 +21,7 @@
 
   let navBudget = 0;
   const fx = []; // transient effect records (tracers, poofs, blood), decayed per frame
+  const agentGrid = new ZS.Grid(CELL);
 
   function makeAgent(x, y, st, extra) {
     return ZS.scenario.makeAgent(x, y, st, extra);
@@ -46,23 +47,41 @@
   function planAndFollow(a, tg, isZ, sp, dt, t, nav) {
     const swim = ZS.scenario.swim;
     const terrainSpeed = nav.speedFactor ? nav.speedFactor(a.x, a.y) : 1;
-    const d = Math.hypot(tg.x - a.x, tg.y - a.y);
-    if (d < 16) return "arrived";
-    const moved =
-      a.gx === null || (a.gx - tg.x) * (a.gx - tg.x) + (a.gy - tg.y) * (a.gy - tg.y) > 1600;
-    let need = !a.path || moved || a.navV0 !== nav.version || a.stuckT > 0.7;
+    let goal = tg,
+      routeStage = 0;
+    if (!isZ) {
+      const targetBuilding = ZS.Buildings.cellBldAt(nav, tg.x, tg.y),
+        currentBuilding = ZS.Buildings.cellBldAt(nav, a.x, a.y);
+      if (targetBuilding >= 0 && currentBuilding !== targetBuilding) {
+        const building = ZS.Buildings.list[targetBuilding],
+          front = building && building.door && building.door.front;
+        if (front && Math.hypot(front.x - a.x, front.y - a.y) >= 14) {
+          goal = front;
+          routeStage = targetBuilding + 1;
+        } else routeStage = -targetBuilding - 1;
+      }
+    }
+    const d = Math.hypot(goal.x - a.x, goal.y - a.y);
+    a.wantMove = d >= 16;
+    if (!a.wantMove) return "arrived";
+    const stageChanged = a.routeStage !== routeStage,
+      moved =
+        a.gx === null ||
+        (a.gx - goal.x) * (a.gx - goal.x) + (a.gy - goal.y) * (a.gy - goal.y) > 1600;
+    a.routeStage = routeStage;
+    let need = !a.path || moved || stageChanged || a.navV0 !== nav.version || a.stuckT > 0.7;
     if (!need && a.path) {
       const np = a.path[Math.min(a.pi + 1, a.path.length - 1)];
       if (np && !nav.isWalkable(np.x, np.y, isZ) && !(swim && nav.isWater(np.x, np.y))) need = true;
     }
     if (need) {
-      a.gx = tg.x;
-      a.gy = tg.y;
+      a.gx = goal.x;
+      a.gy = goal.y;
       a.navV0 = nav.version;
       a.stuckT = 0;
       if (navBudget > 0 && (!a.planFailT || t > a.planFailT || moved)) {
         navBudget--;
-        const p = nav.astar(a.x, a.y, tg.x, tg.y, isZ, 0, swim);
+        const p = nav.astar(a.x, a.y, goal.x, goal.y, isZ, 0, swim);
         if (p && p.length) {
           a.path = p;
           a.pi = 0;
@@ -87,13 +106,13 @@
       steerToward(a, wp.x, wp.y, sp * terrainSpeed, dt);
       return "path";
     }
-    if (nav.los(a.x, a.y, tg.x, tg.y, isZ, swim)) {
-      steerToward(a, tg.x, tg.y, sp * terrainSpeed, dt);
+    if (nav.los(a.x, a.y, goal.x, goal.y, isZ, swim)) {
+      steerToward(a, goal.x, goal.y, sp * terrainSpeed, dt);
       return "direct";
     }
     // no path, no line of sight: drift toward the target; the hard clamp
     // stops us against the obstacle and the stuck timer forces a replan.
-    steerToward(a, tg.x, tg.y, sp * terrainSpeed * 0.5, dt);
+    steerToward(a, goal.x, goal.y, sp * terrainSpeed * 0.5, dt);
     return "blocked";
   }
 
@@ -203,7 +222,8 @@
     const nav = world.nav;
     const buildings = world.buildings;
     navBudget = NAV_BUDGET;
-    const grid = new ZS.Grid(CELL);
+    const grid = agentGrid;
+    grid.clear();
     for (let i = 0; i < agents.length; i++) {
       const a = agents[i];
       a.id = i;
@@ -326,8 +346,10 @@
         a.vx *= maxv / v;
         a.vy *= maxv / v;
       }
-      const nx = ZS.clamp(a.x + a.vx * dt, 12, world.w - 12);
-      const ny = ZS.clamp(a.y + a.vy * dt, 12, world.h - 12);
+      const oldX = a.x,
+        oldY = a.y,
+        nx = ZS.clamp(a.x + a.vx * dt, 12, world.w - 12),
+        ny = ZS.clamp(a.y + a.vy * dt, 12, world.h - 12);
       hardClamp(a, nx, ny, blk, nav);
       a.gait += dt * (2 + Math.hypot(a.vx, a.vy) * 0.13);
       // track cell + building for occupancy counts and shelter logic
@@ -336,8 +358,8 @@
         if (blk) buildings[a.bld].inCount++;
         else buildings[a.bld].survCount++;
       }
-      const sp = Math.hypot(a.vx, a.vy);
-      if (a.wantMove && sp < 22 && !(S.swim && nav.isWater(a.x, a.y))) a.stuckT += dt;
+      const progress = Math.hypot(a.x - oldX, a.y - oldY) / Math.max(dt, 0.001);
+      if (a.wantMove && progress < 8 && !(S.swim && nav.isWater(a.x, a.y))) a.stuckT += dt;
       else a.stuckT = Math.max(0, a.stuckT - dt * 2);
     }
     // the fallen are lifted from the field

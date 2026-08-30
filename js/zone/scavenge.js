@@ -27,7 +27,15 @@
 
     updateSquad(squad, order, leader, dt, t, nav) {
       const record = this.map.at(order.buildingId);
-      if (!record || record === this.map.hq || record.looted) return "complete";
+      if (
+        !record ||
+        record.demolished ||
+        record.demolitionT ||
+        !record.shape.door ||
+        record === this.map.hq ||
+        record.looted
+      )
+        return "complete";
       if (leader.bld !== record.id && Math.hypot(order.x - leader.x, order.y - leader.y) > 15) {
         squad.state = "moving to scavenge";
         ZS.planAndFollow(leader, order, false, CFG.AGENT.SPEED, dt, t, nav);

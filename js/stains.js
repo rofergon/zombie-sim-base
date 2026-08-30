@@ -10,7 +10,10 @@
   class Stains {
     constructor(world) {
       this.world = world;
-      this.chunked = Boolean(world.chunked);
+      // A transparent world-sized canvas is expensive even while empty
+      // (about 31 MB on the classic 3200x2400 map). Sparse chunks preserve
+      // the exact painters and allocate only where damage actually lands.
+      this.chunked = Boolean(world.chunked || world.w * world.h >= 4_000_000);
       this.size = world.chunkSize || 1024;
       this.chunks = new Map();
       this.cv = document.createElement("canvas");

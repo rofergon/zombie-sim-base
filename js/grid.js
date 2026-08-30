@@ -8,10 +8,12 @@
     constructor(cell) {
       this.cell = cell;
       this.cells = new Map();
+      this.active = [];
     }
 
     clear() {
-      this.cells.clear();
+      for (let i = 0; i < this.active.length; i++) this.active[i].length = 0;
+      this.active.length = 0;
     }
 
     // world spans a few hundred cells at most; offset columns stay unique
@@ -22,8 +24,14 @@
     insert(a) {
       const k = this.key((a.x / this.cell) | 0, (a.y / this.cell) | 0);
       const arr = this.cells.get(k);
-      if (arr) arr.push(a);
-      else this.cells.set(k, [a]);
+      if (arr) {
+        if (arr.length === 0) this.active.push(arr);
+        arr.push(a);
+      } else {
+        const bucket = [a];
+        this.cells.set(k, bucket);
+        this.active.push(bucket);
+      }
     }
 
     query(x, y, r, fn) {

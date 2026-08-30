@@ -252,7 +252,9 @@
           return false;
       }
       for (let i = 0; i < this.map.records.length; i++) {
-        const shape = this.map.records[i].shape;
+        const building = this.map.records[i];
+        if (building.demolished) continue;
+        const shape = building.shape;
         if (
           x + HALF > shape.x - 6 &&
           x - HALF < shape.x + shape.w + 6 &&

@@ -181,7 +181,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     );
     assert.ok(distance > 80, "survey team should move after an order");
 
-    await sim.page.evaluate(({ x, y }) => ZS.scenario.debugIssueMove(x + 80, y, true), move);
+    await sim.page.evaluate(({ wx, wy }) => ZS.scenario.debugIssueMove(wx + 80, wy, true), move);
     assert.ok(
       await sim.page.evaluate(() =>
         ZS.Sim.agents
@@ -258,7 +258,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.ok(areaRoute.perSquad.every((count) => count > 0));
     assert.ok(areaRoute.count >= 6);
     assert.equal(areaRoute.unique, areaRoute.count);
-    await sim.page.evaluate(({ x, y }) => ZS.scenario.debugIssueMove(x, y, false), move);
+    await sim.page.evaluate(({ wx, wy }) => ZS.scenario.debugIssueMove(wx, wy, false), move);
     assert.ok(
       await sim.page.evaluate(
         (id) =>

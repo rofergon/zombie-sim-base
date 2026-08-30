@@ -7,6 +7,7 @@
   const USE = CFG.BUILDING_USE;
   const R = CFG.RESOURCE;
   const P = CFG.POI;
+  const DEMOLITION_SECONDS = 0.48;
 
   const USE_LABEL = Object.freeze({
     [USE.ABANDONED]: "abandonado",
@@ -66,6 +67,8 @@
       this.hq = null;
       this.recommended = null;
       this.minHQArea = CFG.MAP.MIN_HQ_AREA;
+      this.demolitions = [];
+      this.onDemolished = null;
     }
 
     prepare(world, nav) {
@@ -303,6 +306,8 @@
             looted: saved ? saved.looted : false,
             scavengeProgress: saved ? saved.scavengeProgress : 0,
             infectedRemaining: saved ? saved.infectedRemaining : generated.infectedRemaining,
+            demolished: saved ? saved.demolished : false,
+            demolitionT: 0,
             encounterSpawned: false,
             poiLabel: "",
             capacity: 0,
@@ -314,7 +319,9 @@
           };
         record.poiLabel = POI_LABEL[record.poi];
         shape.zoneId = i;
+        shape.hidden = record.demolished;
         this.records.push(record);
+        if (record.demolished) continue;
         if (shape.door && (!largestDoor || area > largestDoor.area)) largestDoor = record;
         if (!this.suitableHQ(record)) continue;
         const dist = Math.hypot(record.cx - cx, record.cy - cy),
@@ -323,6 +330,10 @@
           bestScore = score;
           best = record;
         }
+      }
+      for (let i = 0; i < this.records.length; i++) {
+        const record = this.records[i];
+        if (record.demolished) ZS.Buildings.demolish(record.shape, this.nav);
       }
       if (!best && largestDoor) {
         this.minHQArea = Math.max(1200, Math.floor(largestDoor.area * 0.9));
@@ -385,17 +396,35 @@
 
     buildingAt(x, y) {
       const id = ZS.Buildings.cellBldAt(this.nav, x, y);
-      if (id >= 0) return this.records[id] || null;
+      if (id >= 0) {
+        const record = this.records[id];
+        return record && !record.demolished ? record : null;
+      }
       for (let i = 0; i < this.records.length; i++) {
         const r = this.records[i],
           b = r.shape;
+        if (r.demolished) continue;
         if (x >= b.x - 10 && x <= b.x + b.w + 10 && y >= b.y - 10 && y <= b.y + b.h + 10) return r;
       }
       return null;
     }
 
     suitableHQ(record) {
-      return Boolean(record && record.shape.door && record.area >= this.minHQArea);
+      return Boolean(
+        record &&
+        !record.demolished &&
+        !record.demolitionT &&
+        record.shape.door &&
+        record.area >= this.minHQArea,
+      );
+    }
+
+    reachable(record) {
+      if (!record || record.demolished || record.demolitionT || !record.shape.door) return false;
+      if (!this.hq || !this.hq.shape.door) return true;
+      const from = this.hq.shape.door.accessId,
+        to = record.shape.door.accessId;
+      return from < 0 || to < 0 || from === to;
     }
 
     setHQ(id) {
@@ -440,7 +469,14 @@
     }
 
     adapt(record, use, fortified) {
-      if (!record || record === this.hq || record.use !== USE.ABANDONED) return false;
+      if (
+        !record ||
+        record.demolished ||
+        record.demolitionT ||
+        record === this.hq ||
+        record.use !== USE.ABANDONED
+      )
+        return false;
       record.use = use;
       record.maxHP = CFG.HORDE.BUILDING_MAX_HP * (fortified ? 1.35 : 1);
       record.hp = record.maxHP;
@@ -449,6 +485,36 @@
       record.revealed = true;
       record.cleared = true;
       return true;
+    }
+
+    startDemolition(record) {
+      if (
+        !record ||
+        record === this.hq ||
+        record.demolished ||
+        record.demolitionT ||
+        this.materialsTotal(record) > 0
+      )
+        return false;
+      record.demolitionT = DEMOLITION_SECONDS;
+      this.demolitions.push(record);
+      return true;
+    }
+
+    update(dt) {
+      for (let i = this.demolitions.length - 1; i >= 0; i--) {
+        const record = this.demolitions[i];
+        record.demolitionT = Math.max(0, record.demolitionT - dt);
+        if (record.demolitionT > 0) continue;
+        record.demolished = true;
+        record.active = false;
+        record.hp = 0;
+        record.maxHP = 0;
+        record.shape.hidden = true;
+        ZS.Buildings.demolish(record.shape, this.nav);
+        this.demolitions.splice(i, 1);
+        if (this.onDemolished) this.onDemolished(record);
+      }
     }
 
     capture() {
@@ -467,6 +533,7 @@
           looted: record.looted,
           scavengeProgress: record.scavengeProgress,
           infectedRemaining: record.infectedRemaining,
+          demolished: record.demolished,
           use: record.use,
           hp: record.hp,
           maxHP: record.maxHP,
@@ -492,6 +559,23 @@
         overview = visible && visible.x1 - visible.x0 > 6000,
         roads = this._queryRoads(visible);
       c.save();
+      // Erase the pre-rendered floor wash down here, below every agent. Doing
+      // this in the y-sorted building overlay would cover inhabitants who
+      // happen to stand behind the former building.
+      for (let i = 0; i < this.records.length; i++) {
+        const record = this.records[i],
+          shape = record.shape;
+        if (
+          !record.demolished ||
+          (visible &&
+            (shape.x + shape.w < visible.x0 ||
+              shape.x > visible.x1 ||
+              shape.y + shape.h < visible.y0 ||
+              shape.y > visible.y1))
+        )
+          continue;
+        this._drawClearedLot(c, shape);
+      }
       c.lineCap = "round";
       c.strokeStyle = "rgba(157,137,99,0.11)";
       c.lineWidth = CFG.MAP.ROAD_WIDTH;
@@ -549,6 +633,13 @@
     drawBuildingOverlay(c, shape, selected, hovered, areaTarget, layers, job) {
       const record = this.at(shape.zoneId);
       if (!record) return;
+      if (record.demolished) {
+        return;
+      }
+      if (record.demolitionT > 0) {
+        this._drawDemolition(c, record, shape);
+        return;
+      }
       layers = layers || {};
       if (
         (layers.adapted && record.use !== USE.ABANDONED) ||
@@ -564,7 +655,10 @@
             : layers.power && record.active && !record.powered
               ? "rgba(190,143,73,0.14)"
               : "rgba(112,148,72,0.12)";
-        c.fillRect(shape.x - 3, shape.y - 3, shape.w + 6, shape.h + 6);
+        if (shape.footprint) {
+          ZS.wpoly(c, shape.footprint, shape.seed + 501, 0.45, true);
+          c.fill();
+        } else c.fillRect(shape.x - 3, shape.y - 3, shape.w + 6, shape.h + 6);
         c.restore();
       }
       if (selected || hovered || areaTarget) {
@@ -575,8 +669,13 @@
             ? "rgba(126,89,48,0.86)"
             : "rgba(79,105,55,0.46)";
         c.lineWidth = selected || areaTarget ? 2 : 1.1;
-        const pad = selected || areaTarget ? 7 : 4;
-        ZS.sketchRect(c, shape.x - pad, shape.y - pad, shape.w + pad * 2, shape.h + pad * 2, 3);
+        if (shape.halo || shape.footprint) {
+          ZS.wpoly(c, shape.halo || shape.footprint, shape.seed + 511, 0.7, true);
+          c.stroke();
+        } else {
+          const pad = selected || areaTarget ? 7 : 4;
+          ZS.sketchRect(c, shape.x - pad, shape.y - pad, shape.w + pad * 2, shape.h + pad * 2, 3);
+        }
         c.restore();
       }
       if (record !== this.hq && record.use !== USE.ABANDONED) {
@@ -693,6 +792,69 @@
       c.font = 'italic 13px "Segoe Script", "Bradley Hand", cursive';
       c.textAlign = "center";
       c.fillText("CG", x, shape.y - 50);
+      c.restore();
+    }
+
+    _fillShape(c, shape) {
+      if (shape.footprint) {
+        c.beginPath();
+        c.moveTo(shape.footprint[0].x, shape.footprint[0].y);
+        for (let i = 1; i < shape.footprint.length; i++)
+          c.lineTo(shape.footprint[i].x, shape.footprint[i].y);
+        c.closePath();
+        c.fill();
+        return;
+      }
+      for (let i = 0; i < shape.rooms.length; i++) {
+        const room = shape.rooms[i];
+        c.fillRect(room[0], room[1], room[2], room[3]);
+      }
+    }
+
+    _drawDemolition(c, record, shape) {
+      const progress = 1 - record.demolitionT / DEMOLITION_SECONDS,
+        frame = Math.min(3, (progress * 4) | 0),
+        seed = shape.seed + 1801,
+        bottom = shape.y + shape.h;
+      c.save();
+      c.strokeStyle = "rgba(92,72,50," + (0.42 - frame * 0.07).toFixed(2) + ")";
+      c.lineWidth = 1.35;
+      for (let i = 0; i <= frame + 1; i++) {
+        const x = shape.x + ((i + 1) * shape.w) / (frame + 3);
+        ZS.wline(
+          c,
+          x,
+          shape.y + 3,
+          x + ZS.sjit(seed + i) * shape.w * 0.18,
+          bottom - 3,
+          seed + i * 7,
+          1.1,
+        );
+      }
+      c.strokeStyle = "rgba(112,96,72," + (0.22 + frame * 0.06).toFixed(2) + ")";
+      for (let i = 0; i < 2 + frame; i++)
+        ZS.wcirc(
+          c,
+          shape.x + shape.w * (0.18 + i * 0.16),
+          bottom - 2 - ZS.sjit(seed + 41 + i) * 3,
+          3 + frame * 1.7,
+          seed + 51 + i,
+          1.1,
+        );
+      c.restore();
+    }
+
+    _drawClearedLot(c, shape) {
+      const seed = shape.seed + 1901,
+        y = shape.y + shape.h * 0.72;
+      c.save();
+      c.fillStyle = "rgba(243,237,222,0.96)";
+      this._fillShape(c, shape);
+      c.strokeStyle = "rgba(112,96,72,0.2)";
+      c.lineWidth = 1;
+      ZS.wline(c, shape.x + 8, y, shape.x + shape.w * 0.42, y + 3, seed, 0.8);
+      ZS.wline(c, shape.x + shape.w * 0.58, y + 5, shape.x + shape.w - 7, y - 2, seed + 7, 0.8);
+      ZS.wcirc(c, shape.cx || shape.x + shape.w / 2, y + 5, 2.3, seed + 11, 0.35);
       c.restore();
     }
   }
