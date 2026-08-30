@@ -803,7 +803,7 @@
       c.fill();
       c.stroke();
       c.fillStyle = "rgba(61,52,43,0.9)";
-      c.font = 'italic ' + Math.max(13, 11 / zoom) + 'px "Segoe Script", "Bradley Hand", cursive';
+      c.font = "italic " + Math.max(13, 11 / zoom) + 'px "Segoe Script", "Bradley Hand", cursive';
       c.textAlign = "center";
       c.fillText("CG", x, y - 26 * scale);
       c.restore();

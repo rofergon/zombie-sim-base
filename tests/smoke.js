@@ -213,6 +213,84 @@ const CASES = [
         assert.ok(inkCache.first > 0, "zone.html exterior ink path built");
         assert.equal(inkCache.second, 0, "zone.html exterior ink path reused within boil epoch");
 
+        const exteriorDetails = await sim.page.evaluate(() => {
+          const building = ZS.debug.world.buildings.find(
+              (candidate) => candidate.door && candidate.windows && candidate.windows.length,
+            ),
+            originalLine = ZS.appendWline,
+            originalInk = ZS.drawBuildingExteriorInk,
+            context = document.querySelector("#c").getContext("2d"),
+            lines = [];
+          let overviewCalls = 0;
+          ZS.appendWline = (path, x1, y1, x2, y2, ...rest) => {
+            lines.push([x1, y1, x2, y2]);
+            return originalLine(path, x1, y1, x2, y2, ...rest);
+          };
+          try {
+            ZS.setBoil(54321);
+            ZS.drawBuildingExteriorInk(context, [building], 54321, 2, 1, 1);
+            const hasLine = (x1, y1, x2, y2) =>
+                lines.some(
+                  (line) => line[0] === x1 && line[1] === y1 && line[2] === x2 && line[3] === y2,
+                ),
+              door = building.door,
+              doorTx = door.tx != null ? door.tx : door.face === "e" || door.face === "w" ? 0 : 1,
+              doorTy = door.ty != null ? door.ty : door.face === "e" || door.face === "w" ? 1 : 0,
+              doorHw = door.hw != null ? door.hw : 19,
+              doorVisible = hasLine(
+                door.x - doorTx * doorHw,
+                door.y - doorTy * doorHw,
+                door.x + doorTx * doorHw,
+                door.y + doorTy * doorHw,
+              ),
+              windowsVisible = building.windows.every((window) =>
+                hasLine(
+                  window.x - window.tx * window.hw,
+                  window.y - window.ty * window.hw,
+                  window.x + window.tx * window.hw,
+                  window.y + window.ty * window.hw,
+                ),
+              );
+            ZS.drawBuildingExteriorInk = (...args) => {
+              overviewCalls++;
+              return originalInk(...args);
+            };
+            ZS.debug.world._buildOverview();
+            return { doorVisible, windowsVisible, overviewCalls };
+          } finally {
+            ZS.appendWline = originalLine;
+            ZS.drawBuildingExteriorInk = originalInk;
+          }
+        });
+        assert.equal(exteriorDetails.doorVisible, true, "zone.html LOD keeps doors");
+        assert.equal(exteriorDetails.windowsVisible, true, "zone.html LOD keeps windows");
+        assert.equal(exteriorDetails.overviewCalls, 1, "zone.html overview uses detailed ink");
+
+        const headquartersFlag = await sim.page.evaluate(() => {
+          const scenario = ZS.scenario,
+            cam = ZS.debug.cam,
+            previousZoom = cam.zoom,
+            originalPoly = ZS.wpoly;
+          if (!scenario.map.hq) scenario.map.setHQ(scenario.map.recommended.id);
+          let calls = 0;
+          ZS.wpoly = (...args) => {
+            if (args[1] === scenario.map.hq.flag) calls++;
+            return originalPoly(...args);
+          };
+          try {
+            cam.zoom = cam.minZoom;
+            scenario.drawOverlay(document.querySelector("#c").getContext("2d"));
+            const flag = scenario.map.hq.flag,
+              width = (Math.max(flag[0].x, flag[1].x, flag[2].x) - flag[0].x) * cam.zoom;
+            return { calls, width };
+          } finally {
+            cam.zoom = previousZoom;
+            ZS.wpoly = originalPoly;
+          }
+        });
+        assert.equal(headquartersFlag.calls, 1, "zone.html CG flag stays in the overlay");
+        assert.ok(headquartersFlag.width >= 15, "zone.html CG flag keeps a readable screen size");
+
         const dirtyPaint = await sim.page.evaluate(() => {
           const atlas = ZS.renderBackend.buildingAtlases.atlases.find(
               (candidate) => candidate.records.size > 1,
