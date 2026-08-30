@@ -161,8 +161,9 @@ function denseOsmFixture() {
           normalized: normalized.buildings.length,
           migrated: migrated.buildings.length,
           doors: map.records.filter((record) => record.shape.door).length,
-          selectable: map.records.filter((record) => map.buildingAt(record.cx, record.cy) === record)
-            .length,
+          selectable: map.records.filter(
+            (record) => map.buildingAt(record.cx, record.cy) === record,
+          ).length,
           lootable: map.records.filter(
             (record) => map.reachable(record) && map.lootTotal(record) > 0,
           ).length,
