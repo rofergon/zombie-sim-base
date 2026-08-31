@@ -302,17 +302,17 @@ pointer hooks (contract table above), and null-water guards in
 
 ## Zone pack (`js/scenarios/zone.js`, design in `ZONE-DESIGN.md`)
 
-The colony-survival mode has shipped phases 0–5: a dense seeded paper town,
+The colony-survival mode has shipped phases 0–9: a dense seeded paper town,
 player-chosen HQ, persistent citizens and settlement stock, salvage workers,
 controllable squads, patrol, deterministic POIs/loot, and limited scavenging
-encounters, followed by adapted buildings, research, power, staffed production
-and global night defense. The initial population is 16 (four in the first squad
-and twelve workers). Vehicles, trade, factions, laws and OSM remain later work.
+encounters, followed by adapted buildings, research, power, staffed production,
+global night defense, geographic maps, the human campaign and IFZ-style
+cultivation. The initial population is 16 (four in the first squad and twelve
+workers). Vehicles remain later work.
 
-- **Save schema**: `SAVE_VERSION = 7`. Pure migrations add phase-2 data in
-  v3 → v4, phase-3 data in v4 → v5, phase-4 data in v5 → v6 and phase-5 data
-  in v6 → v7. `ZoneSave.normalize` is the only legacy or corrupt-data boundary;
-  gameplay only reads v7.
+- **Save schema**: `SAVE_VERSION = 11`. Pure migrations advance v1 through
+  v10 into the current structure. `ZoneSave.normalize` is the only legacy or
+  corrupt-data boundary; gameplay only reads v11.
 - **Citizens** (`js/zone/citizens.js`): stable numeric IDs, HP, morale, hunger,
   role, work state, assignment, cargo and squad membership. Dusk/night returns
   non-critical workers to HQ; resting recovers morale.
@@ -334,8 +334,12 @@ and twelve workers). Vehicles, trade, factions, laws and OSM remain later work.
   resumes unfinished loot.
 - **Adaptation** (`js/zone/adaptations.js`): cleared buildings reserve finite
   construction materials, then workers adapt them. Stable research unlocks,
-  deterministic power allocation, staffed farms/workshops, cookhouse food
-  efficiency, medical healing and repairs stay scenario-owned.
+  deterministic power allocation, staffed greenhouses/barns/cookhouses and
+  workshops, medical healing and repairs stay scenario-owned.
+- **Agriculture** (`js/zone/agriculture.js`): two- and eight-worker outdoor
+  fields produce grain, seasonal cold slows them, greenhouses ignore weather,
+  and fertilizer changes a normal yield from four to seven. Barns create meat
+  plus fertilizer; cookhouses turn grain or meat into edible rations.
 - **Night defense** (`js/zone/defense.js`): one deterministic edge wave per
   night recalls and restocks squads, targets citizens or persistent structures,
   and ends in a dawn report. Saves keep abstract unspawned/living counts rather
@@ -345,10 +349,11 @@ and twelve workers). Vehicles, trade, factions, laws and OSM remain later work.
   Project Aurora cure stages and persistent endings. Open endings modify the
   existing night-defense pressure instead of spawning a second combat system.
 - **Resource invariant**: stock + worker cargo + squad inventories + building
-  caches changes only through explicit food, ammunition or medicine use.
+  caches changes only through explicit consumption or production recipes.
 - **Verification**: `tests/zone-workers.js`, `tests/zone-squads.js`,
-  `tests/zone-colony.js` and `tests/zone-campaign.js` extend the four-page smoke
-  and phase-0/1 regression suites, always through `file://`.
+  `tests/zone-colony.js`, `tests/zone-farming.js` and `tests/zone-campaign.js`
+  extend the four-page smoke and phase-0/1 regression suites, always through
+  `file://`.
 
 ## Style system (`js/sketch.js`)
 

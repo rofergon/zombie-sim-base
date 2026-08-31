@@ -183,6 +183,25 @@ The existing pages remain independent regression targets:
   culminate in a reinforced final night; the epilogue is dismissible and the
   endless settlement simulation remains playable afterward.
 
+### Phase 9 — IFZ-style cultivation
+
+- Placed fields mirror the reference game's two scales: a normal field staffs
+  two workers and a vast field staffs eight. Both use the shared task board,
+  priorities and physical worker travel rather than a parallel timer.
+- Fields and adapted greenhouses produce grain. One fertilizer changes a
+  normal harvest from four to seven grain; vast-field inputs and outputs scale
+  by four. Fertilization is an explicit per-site recipe and stalls when its
+  input is missing.
+- Adapted barns convert two grain into two raw meat plus one fertilizer.
+  Cookhouses select either two grain plus wood for four rations or two meat
+  plus wood for five. Citizens consume only finished rations.
+- A deterministic 24-day seasonal cycle slows outdoor crop progress in cold
+  weather. Greenhouses retain full speed, making winter staffing and food
+  stockpiles meaningful.
+- Fields are persistent sketch-drawn structures, respect buildings, water and
+  perimeter placement, can be damaged by the night horde, and expose progress,
+  staffing, priority, recipes and weather in the Cultivos panel.
+
 ## Script ownership
 
 All scripts are classic IIFEs on `window.ZS`; `zone.html` defines the load
@@ -201,6 +220,7 @@ order and remains usable through `file://`.
 | `js/zone/squads.js` | Shared squad orders, formation trail, patrol and inventory |
 | `js/zone/scavenge.js` | Seeded loot, reveal, encounters and limited combat |
 | `js/zone/adaptations.js` | Building costs, research, power, production and repairs |
+| `js/zone/agriculture.js` | Field placement, seasons, crop recipes, persistence and sketch rendering |
 | `js/zone/fortifications.js` | Placement, navigation ownership, persistence and automated defenses |
 | `js/zone/defense.js` | Night transitions, horde pressure, structural damage and dawn report |
 | `js/zone/campaign.js` | Human events, recruitment, factions, laws, trade, cure and endings |
@@ -249,11 +269,11 @@ sequence.
     translated display text. Recruitment always uses `ZoneCitizens.recruit`;
     campaign code never creates a parallel population.
 
-## Save v10
+## Save v11
 
 ```text
 {
-  v: 10,
+  v: 11,
   world: {
     seed, configured, source, size,
     mapPackId, mapHash, name, center,
@@ -266,6 +286,7 @@ sequence.
     nextJobId, jobs,
     nextSquadId, squads,
     nextFortificationId, fortifications,
+    nextFieldId, fields,
     buildings,
     regions, expedition,
     tech,
@@ -280,7 +301,7 @@ sequence.
 }
 ```
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV9` are pure/testable steps. A v3
+`ZoneSave.migrateV3` through `ZoneSave.migrateV10` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
@@ -302,13 +323,16 @@ npm test
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
 assignment, salvage/conservation and dusk. `tests/zone-squads.js` covers seeded
 loot, formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v10 migration, construction
+save/load. `tests/zone-colony.js` covers v5 → v11 migration, construction
 conservation, research, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
 suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
 polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
 selector, offline procedural fallback, the 5×5 preset and connected expeditions.
-`tests/zone-campaign.js` covers v9 → v10, the radio choice UI, named recruitment,
+`tests/zone-campaign.js` covers v9 → v11, the radio choice UI, named recruitment,
 reputation, daily trade, laws, all cure stages, the final-night multiplier,
 epilogue and save/load persistence.
+`tests/zone-farming.js` covers the fertilized field → barn → meat cookhouse
+chain, greenhouse winter immunity, finished-ration hunger, staffing and the
+v11 field/building round-trip.
