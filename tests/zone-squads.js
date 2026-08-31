@@ -162,9 +162,8 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         commands: scenario.ui.commandBar.hidden,
         title: scenario.ui.title.textContent,
         portraits: scenario.ui.memberDetail.querySelectorAll(".zone-portrait").length,
-        portraitAsset: getComputedStyle(
-          scenario.ui.memberDetail.querySelector(".zone-portrait"),
-        ).backgroundImage,
+        portraitAsset: getComputedStyle(scenario.ui.memberDetail.querySelector(".zone-portrait"))
+          .backgroundImage,
       };
       const building = scenario.map.records.find((record) => record !== scenario.map.hq);
       building.revealed = false;

@@ -353,6 +353,11 @@
         "click",
         () => this.callbacks && this.callbacks.toggleRoster(),
       );
+      this.inspector.addEventListener("contextmenu", (event) => {
+        if (!this.callbacks || !this.callbacks.mapContext) return;
+        event.preventDefault();
+        this.callbacks.mapContext(event.clientX, event.clientY, event.shiftKey);
+      });
       this.squadList.addEventListener("click", (event) => {
         const focus = event.target.closest("[data-focus-squad]"),
           select = event.target.closest("[data-select-squad]");

@@ -181,11 +181,17 @@ body {
   transform: rotate(-0.2deg);
 }
 
-.zone-inspector {
+#zone-ui .zone-inspector {
   right: 14px;
   top: 143px;
   width: 326px;
+  pointer-events: none;
   transform: rotate(0.16deg);
+}
+
+#zone-ui .zone-inspector button,
+#zone-ui .zone-inspector select {
+  pointer-events: auto;
 }
 
 #zone-ui .zone-roster-toggle {
@@ -2578,7 +2584,6 @@ body {
   .zone-map-stage-head {
     grid-template-columns: minmax(160px, 0.65fr) minmax(330px, 1fr);
   }
-
 }
 
 @media (max-width: 720px) {

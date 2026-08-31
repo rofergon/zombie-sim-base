@@ -106,6 +106,7 @@
         armArea: () => this.armAreaScavenge(),
         armAttack: () => this.armAttack(),
         armGarrison: () => this.armGarrison(),
+        mapContext: (sx, sy, append) => this.issueScreenOrder(sx, sy, append),
         retreat: () => this.retreatSelectedSquads(),
         armDefense: (kind) => this.armDefense(kind),
         stop: () => this.stopSelectedSquads(),
@@ -754,6 +755,13 @@
       this._refreshClock(true);
       this._markUI();
       return true;
+    }
+
+    issueScreenOrder(screenX, screenY, append) {
+      const cam = ZS.debug && ZS.debug.cam;
+      if (!cam) return false;
+      const point = cam.toWorld(screenX, screenY, innerWidth, innerHeight);
+      return this._issueOrder(point.x, point.y, append);
     }
 
     createSalvage() {
