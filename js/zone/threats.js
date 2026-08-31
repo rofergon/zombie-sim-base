@@ -94,6 +94,17 @@
       return record && Number.isInteger(record.zoneThreatId) ? this.at(record.zoneThreatId) : null;
     }
 
+    clearAtHeadquarters(record) {
+      const site = record && this.forBuilding(record.id);
+      if (!site) return false;
+      site.cleared = true;
+      site.strength = 0;
+      record.zoneThreatId = null;
+      record.infectedRemaining = 0;
+      this.capture();
+      return true;
+    }
+
     materialize(record, squadId) {
       const site = record && this.forBuilding(record.id);
       if (!site || site.cleared || site.strength <= 0) return false;

@@ -992,6 +992,7 @@
     establishHQ() {
       const record = this.selectedBuilding;
       if (!record || this.map.hq || !this.map.setHQ(record.id)) return false;
+      this.threats.clearAtHeadquarters(record);
       this.state.setSpeed(1);
       this.timeScale = 1;
       this._wirePopulation();

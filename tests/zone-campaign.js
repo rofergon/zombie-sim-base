@@ -15,7 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         zone: { hqId: 2, initialized: false },
       }),
     );
-    assert.equal(migration.v, 14);
+    assert.equal(migration.v, 16);
     assert.equal(migration.zone.campaign.cureStage, 0);
     assert.deepEqual(migration.zone.campaign.factions, [0, 0, 0]);
 
@@ -155,7 +155,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       history: ZS.scenario.campaign.data.history.length,
       named: ZS.scenario.state.zone.citizens.every((citizen) => Boolean(citizen.name)),
     }));
-    assert.equal(restored.version, 14);
+    assert.equal(restored.version, 16);
     assert.equal(restored.population, population.after);
     assert.equal(restored.stage, 5);
     assert.equal(restored.ending, "broadcast");
