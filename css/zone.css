@@ -413,6 +413,37 @@ body {
   filter: saturate(0.72) contrast(0.94);
 }
 
+.zone-hq-banner img {
+  filter: saturate(0.62) contrast(1.02);
+}
+
+.zone-hq-capacity {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.zone-hq-capacity span {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid rgba(79, 105, 55, 0.26);
+  background: rgba(112, 148, 72, 0.09);
+}
+
+.zone-hq-capacity small {
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  opacity: 0.62;
+}
+
+.zone-hq-capacity b {
+  color: #4f6937;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .zone-building-banner figcaption {
   position: absolute;
   right: 6px;

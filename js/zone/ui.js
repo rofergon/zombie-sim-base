@@ -6,6 +6,7 @@
   const CFG = ZS.ZoneConfig;
   const R = CFG.RESOURCE;
   const BUILDING_SCENE = Object.freeze({
+    HQ: "assets/zone/scenes/headquarters-interior.png",
     COMMERCIAL: "assets/zone/scenes/abandoned-building.png",
     RESIDENTIAL: "assets/zone/scenes/abandoned-residential.png",
     INDUSTRIAL: "assets/zone/scenes/abandoned-industrial.png",
@@ -1856,6 +1857,8 @@
       this.selectionVisual.hidden = true;
       this.selectionVisual.replaceChildren();
       this.memberDetail.hidden = true;
+      this.createSquad.disabled = false;
+      this.createSquad.textContent = "Crear escuadra";
     }
 
     _showSelection() {
@@ -1896,7 +1899,7 @@
       this.hqAction.hidden = !suitable;
     }
 
-    showBuilding(record, isHQ, job, map, adaptations) {
+    showBuilding(record, isHQ, job, map, adaptations, squads) {
       this._hideActions();
       this._showSelection();
       this.home.textContent = "⌂ centrar en la base";
@@ -1917,13 +1920,20 @@
               : "sin explorar · " + record.name
             : map.useLabel(record.use));
       if (isHQ) {
+        const stats = adaptations.citizens
+            ? adaptations.citizens.stats()
+            : { population: 0, free: 0 },
+          squadLimit = 2 + map.countUse(CFG.BUILDING_USE.SQUAD_QUARTERS);
+        this._renderHQVisual(record, map, adaptations, squads, stats);
         this.detail.textContent =
-          "La población descansa, deposita la carga y repone suministros aquí · capacidad " +
-          record.capacity +
-          ".\nestructura " +
-          Math.ceil(record.hp) +
-          "/" +
-          Math.ceil(record.maxHP);
+          "La población descansa, deposita la carga y repone suministros aquí.";
+        this.squadActions.hidden = false;
+        this.createSquad.hidden = false;
+        this.createSquad.textContent = "Crear nueva patrulla";
+        this.createSquad.disabled = squads.list.length >= squadLimit || stats.free < 1;
+        this.returnButton.hidden = true;
+        this.patrol.hidden = true;
+        this.disband.hidden = true;
         this.adaptActions.hidden = false;
         this.adaptUse.hidden = true;
         this.adapt.hidden = true;
@@ -2106,6 +2116,67 @@
       }
       rack.append(rackHeader, slots);
       this.selectionVisual.replaceChildren(banner, progress, rack);
+      this.selectionVisual.hidden = false;
+    }
+
+    _renderHQVisual(record, map, adaptations, squads, stats) {
+      const banner = document.createElement("figure"),
+        image = document.createElement("img"),
+        badge = document.createElement("figcaption"),
+        structure = document.createElement("section"),
+        structureHeader = document.createElement("header"),
+        structureLabel = document.createElement("small"),
+        structureValue = document.createElement("b"),
+        structureTrack = document.createElement("i"),
+        structureFill = document.createElement("em"),
+        capacity = document.createElement("section"),
+        stock = adaptations.state.stock,
+        squadLimit = 2 + map.countUse(CFG.BUILDING_USE.SQUAD_QUARTERS),
+        storage = adaptations.storageCapacity(),
+        stored = stock.reduce((sum, value) => sum + value, 0),
+        rack = document.createElement("section"),
+        rackHeader = document.createElement("header"),
+        rackLabel = document.createElement("small"),
+        rackValue = document.createElement("b"),
+        slots = document.createElement("div");
+      image.src = BUILDING_SCENE.HQ;
+      image.alt = "Interior dibujado del cuartel general";
+      image.decoding = "async";
+      badge.textContent = "BASE OPERATIVA";
+      banner.className = "zone-building-banner zone-hq-banner";
+      banner.append(image, badge);
+      structure.className = "zone-building-progress";
+      structureLabel.textContent = "ESTADO DE LA ESTRUCTURA";
+      structureValue.textContent = Math.ceil(record.hp) + "/" + Math.ceil(record.maxHP);
+      structureFill.style.width = Math.round((record.hp / record.maxHP) * 100) + "%";
+      structureTrack.appendChild(structureFill);
+      structureHeader.append(structureLabel, structureValue);
+      structure.append(structureHeader, structureTrack);
+      capacity.className = "zone-hq-capacity";
+      capacity.innerHTML =
+        "<span><small>PATRULLAS</small><b>" +
+        squads.list.length +
+        "/" +
+        squadLimit +
+        "</b></span><span><small>VIVIENDAS</small><b>" +
+        stats.population +
+        "/" +
+        adaptations.housingCapacity() +
+        "</b></span><span><small>ALMACÉN</small><b>" +
+        stored +
+        "/" +
+        storage +
+        "</b></span>";
+      rack.className = "zone-resource-rack";
+      rackLabel.textContent = "RECURSOS EN LA BASE";
+      rackValue.textContent = stored + "/" + storage;
+      rackHeader.append(rackLabel, rackValue);
+      slots.className = "zone-resource-slots";
+      for (let i = 0; i < R.COUNT; i++)
+        if (stock[i] > 0)
+          this._appendResourceSlot(slots, RESOURCE_ICON[i], RESOURCE_LABEL[i], stock[i]);
+      rack.append(rackHeader, slots);
+      this.selectionVisual.replaceChildren(banner, structure, capacity, rack);
       this.selectionVisual.hidden = false;
     }
 

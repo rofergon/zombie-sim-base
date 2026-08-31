@@ -1103,7 +1103,22 @@
     }
 
     createSquad() {
-      const squad = this.squads.create(this.selected, false);
+      let candidates = this.selected;
+      if (!candidates.length && this.selectedBuilding === this.map.hq) {
+        candidates = [];
+        for (let i = 0; i < this.citizens.byId.length && candidates.length < 4; i++) {
+          const citizen = this.citizens.byId[i];
+          if (
+            citizen &&
+            !citizen.dead &&
+            citizen.role === CFG.ROLE.WORKER &&
+            citizen.jobId === null &&
+            this.citizens.carryTotal(citizen) === 0
+          )
+            candidates.push(citizen);
+        }
+      }
+      const squad = this.squads.create(candidates, false);
       if (!squad) {
         this.ui.toast("Selecciona hasta cuatro trabajadores sin carga.");
         return false;
@@ -2410,6 +2425,7 @@
           this.tasks.forBuilding(this.selectedBuilding.id),
           this.map,
           this.adaptations,
+          this.squads,
         );
       } else this.ui.showNone(true);
     }

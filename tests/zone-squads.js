@@ -44,6 +44,15 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       ),
     }));
     assert.deepEqual(initial, { squads: 1, members: 4, squadRoles: true, jobs: true });
+    assert.equal(await sim.page.locator(".zone-hq-banner").isVisible(), true);
+    assert.equal(await sim.page.locator(".zone-hq-capacity").isVisible(), true);
+    await sim.page.waitForFunction(
+      () => document.querySelector(".zone-hq-banner img").naturalWidth > 0,
+    );
+    assert.equal(
+      await sim.page.locator("#zone-create-squad").textContent(),
+      "Crear nueva patrulla",
+    );
 
     const corner = await sim.page.evaluate(() => {
       const world = { w: 100, h: 100 },
@@ -72,21 +81,22 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(corner.pi, 1, "route follower must not cut a blocked corner");
     assert.ok(Math.abs(corner.vx) < 0.01 && corner.vy > 0);
 
+    const before = await sim.page.evaluate(() => ZS.scenario.citizens.stats().free);
+    await sim.page.locator("#zone-create-squad").click();
     const created = await sim.page.evaluate(() => {
-      const scenario = ZS.scenario;
-      scenario.debugSelectWorkers(5);
-      const before = scenario.citizens.stats().free,
-        squad = scenario.squads.create(scenario.selected, false);
+      const scenario = ZS.scenario,
+        squad = scenario.squads.list[1];
       return {
-        before,
         after: scenario.citizens.stats().free,
         members: squad.members.length,
         noJobs: squad.members.every((id) => scenario.citizens.at(id).jobId === null),
       };
     });
     assert.equal(created.members, 4);
-    assert.equal(created.after, created.before - 4);
+    assert.equal(created.after, before - 4);
     assert.equal(created.noJobs, true);
+    await sim.page.evaluate(() => ZS.scenario.debugSelectBuilding(ZS.scenario.map.hq.id));
+    assert.equal(await sim.page.locator("#zone-create-squad").isDisabled(), true);
 
     const move = await sim.page.evaluate(() => {
       const scenario = ZS.scenario,
@@ -282,7 +292,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     await sim.page.evaluate(() => ZS.scenario.state.save());
     await sim.page.goto(pageUrl("zone.html", { seed: 999, record: 1 }));
-    await sim.page.waitForFunction(() => ZS.scenario && ZS.scenario.map.hq);
+    await sim.page.waitForFunction(
+      () => ZS.scenario && ZS.scenario.map.hq && ZS.Sim.agents.some((agent) => agent.zoneCitizen),
+    );
     const patrolRestored = await sim.page.evaluate(() => ({
       agents: ZS.Sim.agents.filter((agent) => agent.zoneCitizen).length,
       squadMembers: ZS.scenario.squads.list.reduce((sum, squad) => sum + squad.members.length, 0),
