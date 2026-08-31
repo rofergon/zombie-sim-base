@@ -194,7 +194,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         greenhouseFertilized: scenario.map.at(buildingIds[2]).fertilized,
       };
     }, farming);
-    assert.equal(restored.version, 12);
+    assert.equal(restored.version, 13);
     assert.equal(restored.resources, 10);
     assert.equal(restored.field.kind, 1);
     assert.equal(restored.field.fertilized, true);

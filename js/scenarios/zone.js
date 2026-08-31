@@ -1848,7 +1848,10 @@
         scouted = false,
         adapted = false;
       for (let i = 0; i < this.tasks.jobs.length; i++)
-        if (this.tasks.jobs[i].type === CFG.JOB.SALVAGE) {
+        if (
+          this.tasks.jobs[i].type === CFG.JOB.SALVAGE ||
+          this.tasks.jobs[i].type === CFG.JOB.GATHER
+        ) {
           salvage = true;
           break;
         }

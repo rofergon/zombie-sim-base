@@ -20,7 +20,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     });
     assert.equal(migration.v4.v, 4);
     assert.equal(migration.v4.zone.hqId, 4);
-    assert.equal(migration.v12.v, 12);
+    assert.equal(migration.v12.v, 13);
     assert.equal(migration.v12.world.seed, 88);
     assert.equal(migration.v12.clock.minute, 611);
     assert.equal(migration.v12.world.source, "procedural");
@@ -258,7 +258,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(restored.jobs, beforeSave.jobs);
     assert.equal(restored.seed, beforeSave.seed);
     assertNoErrors(sim.errors, "zone workers");
-    process.stdout.write("✓ v3 → v4 → v12 and v12 worker round-trip\n");
+    process.stdout.write("✓ v3 → v4 → v13 and v13 worker round-trip\n");
     process.stdout.write("✓ population, hunger, salvage and conservation\n");
     process.stdout.write("✓ priority rebalance, replacement and dusk return\n");
   } finally {

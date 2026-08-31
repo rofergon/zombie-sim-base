@@ -157,7 +157,7 @@
         '<p id="zone-objective" class="zone-objective">Asegura un cuartel general y prepara el distrito.</p>' +
         '<ol id="zone-objectives" class="zone-objectives">' +
         '<li data-objective="hq">Elige el cuartel general</li>' +
-        '<li data-objective="salvage">Asigna trabajadores al desguace</li>' +
+        '<li data-objective="salvage">Asigna trabajadores a recursos</li>' +
         '<li data-objective="scouted">Explora y limpia un edificio</li>' +
         '<li data-objective="adapted">Adapta un edificio despejado</li>' +
         '<li data-objective="survived">Sobrevive a la primera noche</li>' +
@@ -620,7 +620,7 @@
         this.objective.textContent = "Elige un edificio existente para establecer la primera base.";
       else if (!progress.salvage)
         this.objective.textContent =
-          "Selecciona un edificio abandonado y asigna trabajadores al desguace.";
+          "Abre Recolectar, marca madera o metal y asigna trabajadores al área.";
       else if (!progress.scouted)
         this.objective.textContent =
           "Selecciona una escuadra y haz clic derecho en un edificio para registrarlo.";

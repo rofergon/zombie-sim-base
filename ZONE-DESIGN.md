@@ -272,11 +272,11 @@ sequence.
     translated display text. Recruitment always uses `ZoneCitizens.recruit`;
     campaign code never creates a parallel population.
 
-## Save v12
+## Save v13
 
 ```text
 {
-  v: 12,
+  v: 13,
   world: {
     seed, configured, source, size,
     mapPackId, mapHash, name, center,
@@ -327,17 +327,17 @@ npm test
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
 assignment, salvage/conservation and dusk. `tests/zone-squads.js` covers seeded
 loot, formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v12 migration, construction
+save/load. `tests/zone-colony.js` covers v5 → v13 migration, construction
 conservation, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
 suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
 polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
 selector, offline procedural fallback, the 5×5 preset and connected expeditions.
-`tests/zone-campaign.js` covers v9 → v12, the radio choice UI, named recruitment,
+`tests/zone-campaign.js` covers v9 → v13, the radio choice UI, named recruitment,
 reputation, daily trade, laws, all cure stages, the final-night multiplier,
 epilogue and save/load persistence.
 `tests/zone-research.js` covers researcher assignment, linear staffing speed,
 passive science, start blockers and in-progress save/load. `tests/zone-farming.js`
 covers the fertilized field → barn → meat cookhouse chain, greenhouse winter
-immunity, finished-ration hunger, staffing and the v12 field/building round-trip.
+immunity, finished-ration hunger, staffing and the v13 field/building round-trip.
