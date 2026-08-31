@@ -150,11 +150,14 @@
       const hasAmmo = this.squads.weapons.hasAmmo(squad),
         weapon = hasAmmo ? member.weapon : CFG.WEAPON.MACHETE,
         definition = this.squads.weapons.definition(weapon),
-        range =
-          definition.range *
-          (weapon !== CFG.WEAPON.MACHETE && this.squads.isGarrisoned(member)
-            ? CFG.DEFENSE.GARRISON_RANGE_MULTIPLIER
-            : 1),
+        garrison =
+          weapon !== CFG.WEAPON.MACHETE && this.squads.isGarrisoned(member)
+            ? this.map.at(squad.garrisonBuildingId)
+            : null,
+        firingPoint = garrison && garrison.shape.door && garrison.shape.door.front,
+        fireX = firingPoint ? firingPoint.x : member.x,
+        fireY = firingPoint ? firingPoint.y : member.y,
+        range = definition.range * (garrison ? CFG.DEFENSE.GARRISON_RANGE_MULTIPLIER : 1),
         range2 = range * range;
       for (let i = 0; i < this.agents.length; i++) {
         const enemy = this.agents[i];
@@ -167,11 +170,10 @@
           member.bld !== building.id
         )
           continue;
-        const dx = enemy.x - member.x,
-          dy = enemy.y - member.y,
+        const dx = enemy.x - fireX,
+          dy = enemy.y - fireY,
           d = dx * dx + dy * dy;
-        if (d >= best || d > range2 || !nav.los(member.x, member.y, enemy.x, enemy.y, false))
-          continue;
+        if (d >= best || d > range2 || !nav.los(fireX, fireY, enemy.x, enemy.y, false)) continue;
         target = enemy;
         best = d;
       }
@@ -185,8 +187,8 @@
         this.squads.weapons.fire(squad);
         damage = this.squads.weapons.damage(weapon, Math.sqrt(best));
         member.muzzle = 0.1;
-        ZS.fx.push({ x0: member.x, y0: member.y - 7, x1: target.x, y1: target.y - 6, t: 0.1 });
-        if (ZS.sound) ZS.sound.event(definition.sound, member.x, member.y);
+        ZS.fx.push({ x0: fireX, y0: fireY - 7, x1: target.x, y1: target.y - 6, t: 0.1 });
+        if (ZS.sound) ZS.sound.event(definition.sound, fireX, fireY);
       }
       damage *= this.citizens.skillMultiplier(member, CFG.SKILL.COMBAT);
       target.hp -= damage;

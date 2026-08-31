@@ -535,6 +535,12 @@
       member.orderIndex = squad.orderIndex;
       if (this.scavenge) this.scavenge.autoCombat(member, squad, dt, t, nav);
       if (!squad.orders.length) {
+        const garrison = this.map.at(squad.garrisonBuildingId),
+          entry = garrison && this.map.entryPoint(garrison);
+        if (entry && member.bld !== garrison.id) {
+          ZS.planAndFollow(member, entry, false, CFG.AGENT.SPEED, dt, t, nav);
+          return;
+        }
         member.wantMove = false;
         member.vx *= Math.max(0, 1 - dt * 7);
         member.vy *= Math.max(0, 1 - dt * 7);

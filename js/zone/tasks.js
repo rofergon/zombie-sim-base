@@ -637,12 +637,14 @@
 
     returnForNight(worker) {
       if (!worker || worker.role !== CFG.ROLE.WORKER || worker.dead) return;
-      worker.workerState = worker.bld === this.state.hqId ? WS.RESTING : WS.RETURNING;
+      worker.workerState = this._isShelter(worker.bld) ? WS.RESTING : WS.RETURNING;
     }
 
     updateWorker(worker, dt, t, nav) {
       if (worker.dead || worker.away || worker.role !== CFG.ROLE.WORKER) return;
       const night = this.state.phase() === "dusk" || this.state.phase() === "night";
+      if (night && worker.workerState === WS.RESTING && !this._isShelter(worker.bld))
+        worker.workerState = WS.RETURNING;
       if (night && worker.workerState !== WS.RETURNING && worker.workerState !== WS.RESTING)
         this.returnForNight(worker);
       const job = worker.jobId === null ? null : this.at(worker.jobId);
@@ -650,7 +652,7 @@
         worker.jobId = null;
         if (this.citizens.carryTotal(worker)) worker.workerState = WS.RETURNING;
         else if (night)
-          worker.workerState = worker.bld === this.state.hqId ? WS.RESTING : WS.RETURNING;
+          worker.workerState = this._isShelter(worker.bld) ? WS.RESTING : WS.RETURNING;
         else worker.workerState = WS.IDLE;
       }
       if (worker.workerState === WS.TO_JOB) this._toJob(worker, job, dt, t, nav);
@@ -797,7 +799,12 @@
     _return(worker, job, dt, t, nav, night) {
       const hq = this.map.hq,
         carrying = this.citizens.carryTotal(worker) > 0,
-        destination = this.logistics ? this.logistics.target(worker, night && !carrying) : hq,
+        destination =
+          night && !carrying
+            ? this._nearestShelter(worker)
+            : this.logistics
+              ? this.logistics.target(worker, false)
+              : hq,
         door = destination && destination.shape.door,
         target = door ? door.inner : destination;
       if (!target) return;
@@ -807,7 +814,7 @@
         worker,
         worker.workTarget,
         false,
-        CFG.AGENT.SPEED,
+        CFG.AGENT.SPEED * (night ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1),
         dt,
         t,
         nav,
@@ -828,7 +835,7 @@
         return;
       }
       if (this.logistics) this.logistics.clearTarget(worker);
-      if (night && destination !== hq) worker.workerState = WS.RETURNING;
+      if (night && !this._isShelter(destination.id)) worker.workerState = WS.RETURNING;
       else if (night) worker.workerState = WS.RESTING;
       else if (
         job &&
@@ -845,6 +852,31 @@
       }
       worker.vx = worker.vy = 0;
       if (this.onChanged) this.onChanged();
+    }
+
+    _isShelter(buildingId) {
+      const record = this.map.at(buildingId);
+      return Boolean(
+        record &&
+        record.hp > 0 &&
+        record.active &&
+        (record === this.map.hq || record.use === CFG.BUILDING_USE.SHELTER),
+      );
+    }
+
+    _nearestShelter(worker) {
+      let target = this.map.hq,
+        best = target ? Math.hypot(worker.x - target.cx, worker.y - target.cy) : Infinity;
+      for (let i = 0; i < this.map.records.length; i++) {
+        const record = this.map.records[i];
+        if (record.use !== CFG.BUILDING_USE.SHELTER || !this._isShelter(record.id)) continue;
+        const distance = Math.hypot(worker.x - record.cx, worker.y - record.cy);
+        if (distance < best) {
+          target = record;
+          best = distance;
+        }
+      }
+      return target;
     }
 
     _target(job, worker) {

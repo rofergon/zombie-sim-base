@@ -302,7 +302,70 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         const member = scenario.citizens.at(squad.members[i]);
         if (member) member.bld = hq.id;
       }
-      const garrisoned = scenario.squads.isGarrisoned(scenario.citizens.at(squad.members[0]));
+      const garrisoned = scenario.squads.isGarrisoned(scenario.citizens.at(squad.members[0])),
+        shooter = scenario.citizens.at(squad.members[0]),
+        door = hq.shape.door,
+        shotTarget = scenario.makeAgent(door.front.x, door.front.y, 2);
+      let coveredPoint = null;
+      for (let y = hq.shape.y; y <= hq.shape.y + hq.shape.h && !coveredPoint; y += nav.cell)
+        for (let x = hq.shape.x; x <= hq.shape.x + hq.shape.w; x += nav.cell)
+          if (
+            ZS.Buildings.cellBldAt(nav, x, y) === hq.id &&
+            !nav.los(x, y, shotTarget.x, shotTarget.y, false)
+          ) {
+            coveredPoint = { x, y };
+            break;
+          }
+      if (coveredPoint) {
+        shooter.x = coveredPoint.x;
+        shooter.y = coveredPoint.y;
+        shooter.bld = hq.id;
+      }
+      shotTarget.zoneEnemy = true;
+      shotTarget.hp = shotTarget.maxHP = 1;
+      ZS.Sim.agents.push(shotTarget);
+      squad.inventory[R.AMMO] = Math.max(1, squad.inventory[R.AMMO]);
+      shooter.attackT = 0;
+      scenario.scavenge.autoCombat(shooter, squad, 0.1, performance.now() / 1000, nav);
+      const garrisonFire = Boolean(coveredPoint && shotTarget.dead);
+      shotTarget.dead = true;
+      const lagger = scenario.citizens.at(squad.members[1]),
+        doorDx = door.front.x - door.inner.x,
+        doorDy = door.front.y - door.inner.y,
+        doorLength = Math.max(1, Math.hypot(doorDx, doorDy)),
+        laggerPoint = nav.nearestWalkable(
+          door.front.x + (doorDx / doorLength) * 80,
+          door.front.y + (doorDy / doorLength) * 80,
+          120,
+          false,
+        );
+      lagger.x = laggerPoint.x;
+      lagger.y = laggerPoint.y;
+      lagger.bld = -1;
+      lagger.wantMove = false;
+      scenario.squads.update(lagger, 0.1, performance.now() / 1000, nav);
+      const garrisonIngress = lagger.wantMove;
+
+      const shelter = scenario.map.records
+          .filter(
+            (record) => record.use === CFG.BUILDING_USE.ABANDONED && scenario.map.reachable(record),
+          )
+          .sort(
+            (a, b) =>
+              Math.hypot(b.cx - hq.cx, b.cy - hq.cy) - Math.hypot(a.cx - hq.cx, a.cy - hq.cy),
+          )[0],
+        civilian = scenario.citizens.byId.find((agent) => agent && agent.role === CFG.ROLE.WORKER);
+      scenario.map.adapt(shelter, CFG.BUILDING_USE.SHELTER, false);
+      for (let i = 0; i < R.COUNT; i++) civilian.carry[i] = 0;
+      civilian.x = shelter.shape.door.front.x;
+      civilian.y = shelter.shape.door.front.y;
+      civilian.bld = -1;
+      civilian.workerState = CFG.WORKER_STATE.RETURNING;
+      scenario.state.minute = CFG.CLOCK.DUSK;
+      scenario.tasks.updateWorker(civilian, 0.1, performance.now() / 1000, nav);
+      const shelterTargeted =
+        civilian.workTarget.x === shelter.shape.door.inner.x &&
+        civilian.workTarget.y === shelter.shape.door.inner.y;
 
       scenario.state.minute = CFG.CLOCK.NIGHT - 30;
       scenario.defense.update(0, performance.now() / 1000, nav);
@@ -335,6 +398,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         garrisonOrder,
         garrisonState,
         garrisoned,
+        garrisonFire,
+        garrisonIngress,
+        shelterTargeted,
         warning,
         variantSpeeds: [
           scenario.defense.enemySpeed({ zoneEnemyType: CFG.ENEMY.SHAMBLER }),
@@ -373,6 +439,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(activeDefense.garrisonOrder, 2);
     assert.equal(activeDefense.garrisonState, "moving to garrison");
     assert.equal(activeDefense.garrisoned, true);
+    assert.equal(activeDefense.garrisonFire, true);
+    assert.equal(activeDefense.garrisonIngress, true);
+    assert.equal(activeDefense.shelterTargeted, true);
     assert.equal(activeDefense.warning.active, true);
     assert.equal(activeDefense.warning.minutes, 30);
     assert.match(activeDefense.warning.direction, /^(norte|este|sur|oeste)$/);
