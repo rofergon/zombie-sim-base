@@ -45,7 +45,27 @@
   });
 
   const JOB_STATE = Object.freeze({ ACTIVE: 1, COMPLETE: 2, CANCELED: 3 });
-  const PRIORITY = Object.freeze({ OFF: 0, LOW: 1, NORMAL: 2, HIGH: 3 });
+  const PRIORITY = Object.freeze({
+    OFF: 0,
+    LOWEST: 1,
+    LOW: 2,
+    MEDIUM: 3,
+    NORMAL: 3,
+    HIGH: 4,
+    HIGHEST: 5,
+  });
+
+  const WORK_KIND = Object.freeze({
+    BUILD: 0,
+    SALVAGE: 1,
+    WOOD: 2,
+    METAL: 3,
+    FARMING: 4,
+    FOOD: 5,
+    INDUSTRY: 6,
+    RESEARCH: 7,
+    COUNT: 8,
+  });
 
   const BUILDING_USE = Object.freeze({
     ABANDONED: 0,
@@ -113,13 +133,14 @@
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 13,
+    SAVE_VERSION: 14,
     RESOURCE,
     JOB,
     ROLE,
     WORKER_STATE,
     JOB_STATE,
     PRIORITY,
+    WORK_KIND,
     BUILDING_USE,
     ORDER,
     FORTIFICATION,
@@ -211,6 +232,19 @@
       BUILD_SECONDS: 18,
       PRODUCE_CAPACITY: 1,
       RECONCILE_SECONDS: 1.5,
+    }),
+    WORK: Object.freeze({
+      MAX_WORKERS: 999,
+      DEFAULT_PRIORITY: Object.freeze([
+        PRIORITY.HIGH,
+        PRIORITY.MEDIUM,
+        PRIORITY.MEDIUM,
+        PRIORITY.MEDIUM,
+        PRIORITY.HIGH,
+        PRIORITY.HIGH,
+        PRIORITY.MEDIUM,
+        PRIORITY.LOW,
+      ]),
     }),
     GATHER: Object.freeze({
       DEFAULT_WORKERS: 2,

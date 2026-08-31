@@ -208,7 +208,7 @@
       }
       if (delta > 0) {
         if (job.priority === CFG.PRIORITY.OFF)
-          return this.tasks.setPriority(job.id, CFG.PRIORITY.NORMAL);
+          return this.tasks.setPriority(job.id, this.tasks.defaultPriorityFor(job));
         if (job.capacity >= max) return false;
         return this.tasks.setCapacity(job.id, job.capacity + 1);
       }
@@ -297,7 +297,10 @@
       record.active = !record.active;
       const job = this.tasks.forBuilding(record.id);
       if (job && (job.type === CFG.JOB.PRODUCE || job.type === CFG.JOB.RESEARCH))
-        this.tasks.setPriority(job.id, record.active ? CFG.PRIORITY.NORMAL : CFG.PRIORITY.OFF);
+        this.tasks.setPriority(
+          job.id,
+          record.active ? this.tasks.defaultPriorityFor(job) : CFG.PRIORITY.OFF,
+        );
       this.recalculatePower();
       if (this.onChanged) this.onChanged();
       return true;

@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v13. */
+   shapes are discarded at this storage boundary so gameplay only sees v14. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -25,6 +25,7 @@
       citizens: [],
       nextJobId: 1,
       jobs: [],
+      workPolicy: defaultWorkPolicy(),
       harvestedTrees: [],
       nextSquadId: 1,
       squads: [],
@@ -39,6 +40,13 @@
       research: defaultResearch(),
       defense: defaultDefense(),
       campaign: defaultCampaign(),
+    };
+  }
+
+  function defaultWorkPolicy() {
+    return {
+      priorities: CFG.WORK.DEFAULT_PRIORITY.slice(),
+      max: Array.from({ length: CFG.WORK_KIND.COUNT }, () => CFG.WORK.MAX_WORKERS),
     };
   }
 
@@ -214,6 +222,18 @@
     return { v: 13, world: data.world, clock: data.clock, zone };
   }
 
+  function migrateV13(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.workPolicy = defaultWorkPolicy();
+    if (Array.isArray(zone.jobs))
+      for (let i = 0; i < zone.jobs.length; i++) {
+        const job = zone.jobs[i];
+        if (!job || !Number.isFinite(job.priority) || job.priority <= 0) continue;
+        job.priority = Math.min(CFG.PRIORITY.HIGH, Math.trunc(job.priority) + 1);
+      }
+    return { v: 14, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
@@ -316,7 +336,7 @@
       priority: clamp(
         intOr(raw.priority, CFG.PRIORITY.NORMAL),
         CFG.PRIORITY.OFF,
-        CFG.PRIORITY.HIGH,
+        CFG.PRIORITY.HIGHEST,
       ),
       capacity: clamp(
         intOr(raw.capacity, CFG.TASK.SALVAGE_CAPACITY),
@@ -339,6 +359,24 @@
           : null,
       reserved: resources(raw.reserved),
     };
+  }
+
+  function normalizeWorkPolicy(raw) {
+    const clean = defaultWorkPolicy();
+    if (!raw || typeof raw !== "object") return clean;
+    for (let i = 0; i < CFG.WORK_KIND.COUNT; i++) {
+      clean.priorities[i] = clamp(
+        intOr(raw.priorities && raw.priorities[i], clean.priorities[i]),
+        CFG.PRIORITY.OFF,
+        CFG.PRIORITY.HIGHEST,
+      );
+      clean.max[i] = clamp(
+        intOr(raw.max && raw.max[i], clean.max[i]),
+        0,
+        CFG.WORK.MAX_WORKERS,
+      );
+    }
+    return clean;
   }
 
   function normalizeSquad(raw) {
@@ -601,6 +639,7 @@
     zone.hqId = Number.isInteger(source.hqId) ? source.hqId : null;
     zone.initialized = Boolean(source.initialized);
     zone.stock = resources(source.stock);
+    zone.workPolicy = normalizeWorkPolicy(source.workPolicy);
     zone.tech = Array.from({ length: CFG.TECH.COUNT }, (_, id) =>
       Boolean(source.tech && source.tech[id]),
     );
@@ -722,6 +761,7 @@
       if (data.v === 10) data = migrateV10(data);
       if (data.v === 11) data = migrateV11(data);
       if (data.v === 12) data = migrateV12(data);
+      if (data.v === 13) data = migrateV13(data);
       return normalize(data);
     }
 
@@ -759,6 +799,14 @@
 
     static migrateV11(data) {
       return migrateV11(data);
+    }
+
+    static migrateV12(data) {
+      return migrateV12(data);
+    }
+
+    static migrateV13(data) {
+      return migrateV13(data);
     }
 
     static normalize(data) {

@@ -103,6 +103,9 @@
         salvage: () => this.createSalvage(),
         cancelJob: () => this.cancelSelectedJob(),
         priority: (priority) => this.setSelectedPriority(priority),
+        workPriority: (kind, delta) => this.adjustWorkPriority(kind, delta),
+        workMax: (kind, delta) => this.adjustWorkMaximum(kind, delta),
+        workMaxAll: (kind) => this.maximizeWork(kind),
         createSquad: () => this.createSquad(),
         returnHQ: () => this.returnSelectedSquad(),
         patrol: () => this.patrolSelectedSquad(),
@@ -887,7 +890,7 @@
         this.ui.toast("No hay una ruta peatonal desde la base hasta este edificio.");
         return false;
       }
-      const job = this.tasks.postSalvage(this.selectedBuilding.id, CFG.PRIORITY.NORMAL);
+      const job = this.tasks.postSalvage(this.selectedBuilding.id);
       this.ui.toast(
         job
           ? "Desguace en cola; trabajadores disponibles asignados."
@@ -913,6 +916,28 @@
     setSelectedPriority(priority) {
       const job = this.selectedBuilding && this.tasks.forBuilding(this.selectedBuilding.id),
         result = Boolean(job && this.tasks.setPriority(job.id, priority));
+      this._markUI();
+      return result;
+    }
+
+    adjustWorkPriority(kind, delta) {
+      const current = this.state.zone.workPolicy.priorities[kind],
+        result = Number.isInteger(current) && this.tasks.setWorkPriority(kind, current + delta);
+      if (!result) this.ui.toast("Ese nivel de prioridad ya está en el límite.");
+      this._markUI();
+      return result;
+    }
+
+    adjustWorkMaximum(kind, delta) {
+      const result = this.tasks.adjustWorkMax(kind, delta);
+      if (!result) this.ui.toast("Ese límite de trabajadores ya está alcanzado.");
+      this._markUI();
+      return result;
+    }
+
+    maximizeWork(kind) {
+      const result = this.tasks.setWorkMax(kind, CFG.WORK.MAX_WORKERS);
+      if (!result) this.ui.toast("La categoría ya acepta el máximo disponible.");
       this._markUI();
       return result;
     }
@@ -1167,7 +1192,8 @@
     cycleGatherPriority(id) {
       const job = this.tasks.at(id);
       if (!job || job.type !== CFG.JOB.GATHER) return false;
-      const next = job.priority >= CFG.PRIORITY.HIGH ? CFG.PRIORITY.LOW : job.priority + 1,
+      const next =
+          job.priority >= CFG.PRIORITY.HIGHEST ? CFG.PRIORITY.LOWEST : job.priority + 1,
         result = this.tasks.setPriority(id, next);
       this._markUI();
       return result;
@@ -2041,6 +2067,7 @@
         citizens,
         squads: this.squads.list,
         jobs: this.tasks.jobs,
+        labor: this.tasks.laborModel(),
         useCounts,
         tech: this.state.zone.tech,
         research: this.adaptations.researchModel(),

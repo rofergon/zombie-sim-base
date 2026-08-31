@@ -803,7 +803,7 @@
         }
         if (layers.priorities && job) {
           c.fillStyle =
-            job.priority === CFG.PRIORITY.HIGH
+            job.priority >= CFG.PRIORITY.HIGH
               ? "rgba(150,62,48,0.9)"
               : job.priority === CFG.PRIORITY.OFF
                 ? "rgba(61,52,43,0.45)"

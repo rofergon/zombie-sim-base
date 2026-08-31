@@ -15,6 +15,8 @@
       this.map = map;
       this.citizens = null;
       this.jobs = state.zone.jobs;
+      this.workPolicy = state.zone.workPolicy;
+      this.workAssigned = new Int16Array(CFG.WORK_KIND.COUNT);
       this.dirty = true;
       this.reconcileT = 0;
       this.onChanged = null;
@@ -75,6 +77,37 @@
       return null;
     }
 
+    workKind(job, target) {
+      if (!job) return -1;
+      if (job.type === CFG.JOB.BUILD || job.type === CFG.JOB.REPAIR)
+        return CFG.WORK_KIND.BUILD;
+      if (job.type === CFG.JOB.SALVAGE) return CFG.WORK_KIND.SALVAGE;
+      if (job.type === CFG.JOB.GATHER)
+        return job.resource === R.WOOD ? CFG.WORK_KIND.WOOD : CFG.WORK_KIND.METAL;
+      if (job.type === CFG.JOB.RESEARCH) return CFG.WORK_KIND.RESEARCH;
+      if (job.type !== CFG.JOB.PRODUCE) return -1;
+      if (job.targetKind === "field") return CFG.WORK_KIND.FARMING;
+      const record = target || this.map.at(job.targetId);
+      if (!record) return CFG.WORK_KIND.INDUSTRY;
+      if (record.use === CFG.BUILDING_USE.FARM) return CFG.WORK_KIND.FARMING;
+      if (
+        record.use === CFG.BUILDING_USE.COOKHOUSE ||
+        record.use === CFG.BUILDING_USE.BARN
+      )
+        return CFG.WORK_KIND.FOOD;
+      return CFG.WORK_KIND.INDUSTRY;
+    }
+
+    _defaultPriority(kind) {
+      return kind >= 0 && kind < CFG.WORK_KIND.COUNT
+        ? this.workPolicy.priorities[kind]
+        : CFG.PRIORITY.MEDIUM;
+    }
+
+    defaultPriorityFor(job) {
+      return this._defaultPriority(this.workKind(job));
+    }
+
     postSalvage(buildingId, priority) {
       const record = this.map.at(buildingId);
       if (
@@ -92,7 +125,9 @@
         type: CFG.JOB.SALVAGE,
         targetId: buildingId,
         targetKind: "building",
-        priority: Number.isInteger(priority) ? priority : CFG.PRIORITY.NORMAL,
+        priority: Number.isInteger(priority)
+          ? priority
+          : this._defaultPriority(CFG.WORK_KIND.SALVAGE),
         capacity: CFG.TASK.SALVAGE_CAPACITY,
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
@@ -101,7 +136,6 @@
         reserved: Array.from({ length: R.COUNT }, () => 0),
       };
       this.jobs.push(job);
-      this._releaseIdleAssignments();
       this.markDirty();
       this.reconcile();
       if (this.onChanged) this.onChanged();
@@ -126,7 +160,9 @@
         bounds: { x0: bounds.x0, y0: bounds.y0, x1: bounds.x1, y1: bounds.y1 },
         nodeIds: nodeIds.slice(0, CFG.GATHER.MAX_NODES_PER_AREA),
         total: Math.max(0, total | 0),
-        priority: CFG.PRIORITY.NORMAL,
+        priority: this._defaultPriority(
+          resource === R.WOOD ? CFG.WORK_KIND.WOOD : CFG.WORK_KIND.METAL,
+        ),
         capacity: CFG.GATHER.DEFAULT_WORKERS,
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
@@ -135,7 +171,6 @@
         reserved: Array.from({ length: R.COUNT }, () => 0),
       };
       this.jobs.push(job);
-      this._releaseIdleAssignments();
       this.markDirty();
       this.reconcile();
       if (this.onChanged) this.onChanged();
@@ -157,7 +192,7 @@
         type: CFG.JOB.BUILD,
         targetId: buildingId,
         targetKind: "building",
-        priority: CFG.PRIORITY.HIGH,
+        priority: this._defaultPriority(CFG.WORK_KIND.BUILD),
         capacity: CFG.TASK.BUILD_CAPACITY,
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
@@ -166,7 +201,6 @@
         reserved,
       };
       this.jobs.push(job);
-      this._releaseIdleAssignments();
       this.markDirty();
       this.reconcile();
       if (this.onChanged) this.onChanged();
@@ -184,7 +218,9 @@
         type: research ? CFG.JOB.RESEARCH : CFG.JOB.PRODUCE,
         targetId: buildingId,
         targetKind: "building",
-        priority: CFG.PRIORITY.NORMAL,
+        priority: this._defaultPriority(
+          research ? CFG.WORK_KIND.RESEARCH : this.workKind({ type: CFG.JOB.PRODUCE }, record),
+        ),
         capacity: this.adaptations
           ? research
             ? Math.min(CFG.RESEARCH.DEFAULT_STAFF, this.adaptations.researchCapacity(record))
@@ -213,7 +249,7 @@
         type: CFG.JOB.PRODUCE,
         targetId: fieldId,
         targetKind: "field",
-        priority: CFG.PRIORITY.NORMAL,
+        priority: this._defaultPriority(CFG.WORK_KIND.FARMING),
         capacity: Math.max(1, capacity | 0),
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
@@ -252,12 +288,70 @@
     setPriority(id, priority) {
       const job = this.at(id);
       if (!job || job.state !== CFG.JOB_STATE.ACTIVE) return false;
-      job.priority = Math.max(CFG.PRIORITY.OFF, Math.min(CFG.PRIORITY.HIGH, priority | 0));
-      this._releaseIdleAssignments();
+      job.priority = Math.max(
+        CFG.PRIORITY.OFF,
+        Math.min(CFG.PRIORITY.HIGHEST, priority | 0),
+      );
+      this._releaseJobWorkers(job, false);
       this.markDirty();
       this.reconcile();
       if (this.onChanged) this.onChanged();
       return true;
+    }
+
+    setWorkPriority(kind, priority) {
+      if (!Number.isInteger(kind) || kind < 0 || kind >= CFG.WORK_KIND.COUNT) return false;
+      const next = Math.max(
+        CFG.PRIORITY.OFF,
+        Math.min(CFG.PRIORITY.HIGHEST, priority | 0),
+      );
+      if (this.workPolicy.priorities[kind] === next) return false;
+      this.workPolicy.priorities[kind] = next;
+      for (let i = 0; i < this.jobs.length; i++) {
+        const job = this.jobs[i];
+        if (job.state !== CFG.JOB_STATE.ACTIVE || this.workKind(job) !== kind) continue;
+        job.priority = next;
+        this._releaseJobWorkers(job, false);
+      }
+      this.markDirty();
+      this.reconcile();
+      if (this.onChanged) this.onChanged();
+      return true;
+    }
+
+    setWorkMax(kind, maximum) {
+      if (!Number.isInteger(kind) || kind < 0 || kind >= CFG.WORK_KIND.COUNT) return false;
+      const next = Math.max(0, Math.min(CFG.WORK.MAX_WORKERS, maximum | 0));
+      if (this.workPolicy.max[kind] === next) return false;
+      this.workPolicy.max[kind] = next;
+      this.markDirty();
+      this.reconcile();
+      if (this.onChanged) this.onChanged();
+      return true;
+    }
+
+    adjustWorkMax(kind, delta) {
+      const row = this._workTotals(kind),
+        current = this.workPolicy.max[kind],
+        baseline = current >= CFG.WORK.MAX_WORKERS ? row.requested : current;
+      return this.setWorkMax(kind, baseline + (delta | 0));
+    }
+
+    laborModel() {
+      const rows = [];
+      for (let kind = 0; kind < CFG.WORK_KIND.COUNT; kind++) {
+        const totals = this._workTotals(kind);
+        rows.push({
+          kind,
+          priority: this.workPolicy.priorities[kind],
+          max: this.workPolicy.max[kind],
+          assigned: totals.assigned,
+          requested: totals.requested,
+          jobs: totals.jobs,
+          blocked: totals.blocked,
+        });
+      }
+      return rows;
     }
 
     setCapacity(id, capacity) {
@@ -281,25 +375,14 @@
       return true;
     }
 
-    _releaseIdleAssignments() {
-      for (let i = 0; i < this.jobs.length; i++) {
-        const job = this.jobs[i];
-        if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
-        const target = this._target(job);
-        if (job.type === CFG.JOB.GATHER && !target) continue;
-        if (!this._reachable(job, target)) {
-          this.cancel(job.id);
-          continue;
-        }
-        for (let j = job.assigned.length - 1; j >= 0; j--) {
-          const worker = this.citizens.at(job.assigned[j]);
-          if (worker && this.citizens.carryTotal(worker) > 0) continue;
-          job.assigned.splice(j, 1);
-          if (worker && worker.jobId === job.id) {
-            worker.jobId = null;
-            worker.workerState = CFG.WORKER_STATE.IDLE;
-          }
-        }
+    _releaseJobWorkers(job, keepCargo) {
+      for (let i = job.assigned.length - 1; i >= 0; i--) {
+        const worker = this.citizens.at(job.assigned[i]);
+        if (keepCargo && worker && this.citizens.carryTotal(worker) > 0) continue;
+        job.assigned.splice(i, 1);
+        if (!worker || worker.jobId !== job.id) continue;
+        worker.jobId = null;
+        worker.workerState = this.citizens.carryTotal(worker) ? WS.RETURNING : WS.IDLE;
       }
     }
 
@@ -313,12 +396,15 @@
     reconcile() {
       if (!this.citizens) return;
       this.dirty = false;
+      this.workAssigned.fill(0);
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
         if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
         const gatherExhausted =
-          job.type === CFG.JOB.GATHER && (!this.gathering || this.gathering.available(job) <= 0);
-        if (!gatherExhausted && !this._reachable(job, this._target(job))) {
+            job.type === CFG.JOB.GATHER && (!this.gathering || this.gathering.available(job) <= 0),
+          target = this._target(job),
+          eligible = this._eligible(job, target);
+        if (!gatherExhausted && !this._reachable(job, target)) {
           this.cancel(job.id);
           continue;
         }
@@ -329,13 +415,11 @@
             worker.dead ||
             worker.role !== CFG.ROLE.WORKER ||
             worker.jobId !== job.id ||
-            job.priority === CFG.PRIORITY.OFF
+            job.priority === CFG.PRIORITY.OFF ||
+            !eligible ||
+            j >= job.capacity
           ) {
-            job.assigned.splice(j, 1);
-            if (worker && worker.jobId === job.id) {
-              worker.jobId = null;
-              worker.workerState = this.citizens.carryTotal(worker) ? WS.RETURNING : WS.IDLE;
-            }
+            this._detachWorker(job, j, worker);
           }
         }
         if (
@@ -345,22 +429,132 @@
         )
           this._complete(job);
         else if (gatherExhausted && !this._hasInFlight(job)) this._complete(job);
+        else {
+          const kind = this.workKind(job, target);
+          if (kind >= 0) this.workAssigned[kind] += job.assigned.length;
+        }
       }
+      this._trimWorkMaximums();
       if (this.state.phase() === "dusk" || this.state.phase() === "night") return;
-      for (let priority = CFG.PRIORITY.HIGH; priority >= CFG.PRIORITY.LOW; priority--)
-        for (let i = 0; i < this.jobs.length; i++) {
-          const job = this.jobs[i];
-          if (job.state !== CFG.JOB_STATE.ACTIVE || job.priority !== priority) continue;
-          if (job.type === CFG.JOB.GATHER && this.gathering.available(job) <= 0) continue;
-          while (job.assigned.length < job.capacity) {
-            const worker = this._freeWorker();
-            if (!worker) return;
+      for (
+        let priority = CFG.PRIORITY.HIGHEST;
+        priority >= CFG.PRIORITY.LOWEST;
+        priority--
+      ) {
+        let assigned = true;
+        while (assigned) {
+          assigned = false;
+          for (let i = 0; i < this.jobs.length; i++) {
+            const job = this.jobs[i],
+              target = this._target(job);
+            if (
+              job.state !== CFG.JOB_STATE.ACTIVE ||
+              job.priority !== priority ||
+              job.assigned.length >= job.capacity ||
+              !this._eligible(job, target)
+            )
+              continue;
+            const kind = this.workKind(job, target),
+              categoryFull = kind >= 0 && this.workAssigned[kind] >= this.workPolicy.max[kind];
+            let worker = categoryFull ? null : this._freeWorker();
+            if (!worker) worker = this._preemptWorker(priority, kind, categoryFull);
+            if (!worker) continue;
             worker.jobId = job.id;
             worker.workerState = WS.TO_JOB;
             worker.workT = 0;
             job.assigned.push(worker.cid);
+            if (kind >= 0) this.workAssigned[kind]++;
+            assigned = true;
           }
         }
+      }
+    }
+
+    _eligible(job, target) {
+      if (!job || job.state !== CFG.JOB_STATE.ACTIVE || job.priority === CFG.PRIORITY.OFF)
+        return false;
+      if (!this._reachable(job, target)) return false;
+      if (job.type === CFG.JOB.GATHER)
+        return Boolean(this.gathering && this.gathering.available(job) > 0);
+      if (job.type === CFG.JOB.SALVAGE) return this.map.materialsTotal(target) > 0;
+      if (job.type === CFG.JOB.RESEARCH)
+        return Boolean(
+          target &&
+          target.use === CFG.BUILDING_USE.RESEARCH &&
+          target.active &&
+          target.powered &&
+          target.hp > 0,
+        );
+      if (job.type === CFG.JOB.PRODUCE) {
+        const controller = job.targetKind === "field" ? this.agriculture : this.adaptations;
+        return Boolean(controller && controller.canProduce(target));
+      }
+      return true;
+    }
+
+    _detachWorker(job, index, worker) {
+      job.assigned.splice(index, 1);
+      if (!worker || worker.jobId !== job.id) return;
+      worker.jobId = null;
+      worker.workerState = this.citizens.carryTotal(worker) ? WS.RETURNING : WS.IDLE;
+    }
+
+    _trimWorkMaximums() {
+      for (let kind = 0; kind < CFG.WORK_KIND.COUNT; kind++) {
+        const maximum = this.workPolicy.max[kind];
+        if (this.workAssigned[kind] <= maximum) continue;
+        for (
+          let priority = CFG.PRIORITY.LOWEST;
+          priority <= CFG.PRIORITY.HIGHEST && this.workAssigned[kind] > maximum;
+          priority++
+        )
+          for (let i = this.jobs.length - 1; i >= 0 && this.workAssigned[kind] > maximum; i--) {
+            const job = this.jobs[i];
+            if (
+              job.state !== CFG.JOB_STATE.ACTIVE ||
+              job.priority !== priority ||
+              this.workKind(job) !== kind
+            )
+              continue;
+            while (job.assigned.length && this.workAssigned[kind] > maximum) {
+              const index = job.assigned.length - 1,
+                worker = this.citizens.at(job.assigned[index]);
+              this._detachWorker(job, index, worker);
+              this.workAssigned[kind]--;
+            }
+          }
+      }
+    }
+
+    _preemptWorker(priority, targetKind, categoryFull) {
+      let source = null,
+        sourceIndex = -1,
+        sourcePriority = CFG.PRIORITY.HIGHEST + 1;
+      for (let i = 0; i < this.jobs.length; i++) {
+        const job = this.jobs[i];
+        if (
+          job.state !== CFG.JOB_STATE.ACTIVE ||
+          job.priority >= priority ||
+          !job.assigned.length ||
+          (categoryFull && this.workKind(job) !== targetKind) ||
+          job.priority >= sourcePriority
+        )
+          continue;
+        for (let j = job.assigned.length - 1; j >= 0; j--) {
+          const worker = this.citizens.at(job.assigned[j]);
+          if (!worker || this.citizens.carryTotal(worker) > 0) continue;
+          source = job;
+          sourceIndex = j;
+          sourcePriority = job.priority;
+          break;
+        }
+      }
+      if (!source) return null;
+      const worker = this.citizens.at(source.assigned[sourceIndex]),
+        kind = this.workKind(source);
+      this._detachWorker(source, sourceIndex, worker);
+      if (kind >= 0) this.workAssigned[kind]--;
+      return worker;
     }
 
     _freeWorker() {
@@ -376,6 +570,19 @@
           return worker;
       }
       return null;
+    }
+
+    _workTotals(kind) {
+      const totals = { assigned: 0, requested: 0, jobs: 0, blocked: 0 };
+      for (let i = 0; i < this.jobs.length; i++) {
+        const job = this.jobs[i];
+        if (job.state !== CFG.JOB_STATE.ACTIVE || this.workKind(job) !== kind) continue;
+        totals.jobs++;
+        totals.assigned += job.assigned.length;
+        totals.requested += job.capacity;
+        if (!this._eligible(job, this._target(job))) totals.blocked++;
+      }
+      return totals;
     }
 
     _hasInFlight(job) {

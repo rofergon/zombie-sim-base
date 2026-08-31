@@ -25,6 +25,27 @@
     [CFG.WORKER_STATE.RETURNING]: "regresando a la base",
     [CFG.WORKER_STATE.RESTING]: "descansando",
   });
+  const PRIORITY_LABEL = Object.freeze(["detenida", "mínima", "baja", "media", "alta", "máxima"]);
+  const LABOR_LABEL = Object.freeze([
+    "Construcción",
+    "Desguace",
+    "Tala",
+    "Recogida de metal",
+    "Cultivo",
+    "Alimentos",
+    "Industria",
+    "Investigación",
+  ]);
+  const LABOR_ICON = Object.freeze([
+    "zi-build",
+    "zi-scavenge",
+    "zi-wood",
+    "zi-metal",
+    "zi-grain",
+    "zi-food",
+    "zi-production",
+    "zi-research",
+  ]);
   const PHASE_LABEL = Object.freeze({
     dawn: "amanecer",
     day: "día",
@@ -190,7 +211,7 @@
         "</div>" +
         "<footer>Haz clic para asignar hasta 3 trabajadores.</footer>" +
         "</section>" +
-        '<label>prioridad <select id="zone-priority"><option value="0">desactivada</option><option value="1">baja</option><option value="2">normal</option><option value="3">alta</option></select></label>' +
+        '<label>prioridad <select id="zone-priority"><option value="0">desactivada</option><option value="1">mínima</option><option value="2">baja</option><option value="3">media</option><option value="4">alta</option><option value="5">máxima</option></select></label>' +
         "</div>" +
         '<div id="zone-squad-actions" hidden>' +
         '<button id="zone-create-squad" type="button">Crear escuadra</button>' +
@@ -439,6 +460,9 @@
           layer = event.target.closest("[data-layer]"),
           alert = event.target.closest("[data-alert-index]"),
           citizen = event.target.closest("[data-focus-citizen]"),
+          workPriority = event.target.closest("[data-work-priority]"),
+          workMax = event.target.closest("[data-work-max]"),
+          workMaxAll = event.target.closest("[data-work-max-all]"),
           gatherResource = event.target.closest("[data-gather-resource]"),
           gatherStaff = event.target.closest("[data-gather-staff]"),
           gatherPriority = event.target.closest("[data-gather-priority]"),
@@ -469,6 +493,18 @@
           this.callbacks.focusAlert(Number(alert.dataset.alertIndex));
         else if (citizen && this.callbacks)
           this.callbacks.focusCitizen(Number(citizen.dataset.focusCitizen));
+        else if (workPriority && this.callbacks)
+          this.callbacks.workPriority(
+            Number(workPriority.dataset.workPriority),
+            Number(workPriority.dataset.workPriorityDelta),
+          );
+        else if (workMax && this.callbacks)
+          this.callbacks.workMax(
+            Number(workMax.dataset.workMax),
+            Number(workMax.dataset.workMaxDelta),
+          );
+        else if (workMaxAll && this.callbacks)
+          this.callbacks.workMaxAll(Number(workMaxAll.dataset.workMaxAll));
         else if (gatherResource && this.callbacks)
           this.callbacks.armGather(Number(gatherResource.dataset.gatherResource));
         else if (gatherStaff && this.callbacks)
@@ -723,6 +759,15 @@
           model.stats.free,
           model.stats.assigned,
           Math.round(model.stats.moral),
+          model.labor.map((row) => [
+            row.kind,
+            row.priority,
+            row.max,
+            row.assigned,
+            row.requested,
+            row.jobs,
+            row.blocked,
+          ]),
           model.citizens.map((citizen) => [
             citizen.id,
             Math.ceil(citizen.hp),
@@ -882,7 +927,7 @@
 
     _renderResourceSystem(model) {
       const gathering = model.gathering,
-        priorityLabel = ["detenida", "baja", "normal", "alta"];
+        priorityLabel = PRIORITY_LABEL;
       let html =
         '<p class="zone-system-lead">Elige un material y arrastra sobre el mapa. Los puntos válidos se marcan en azul; cada área conserva su propio equipo.</p>' +
         '<div class="zone-resource-picker"><button type="button" data-gather-resource="' +
@@ -953,7 +998,66 @@
         model.stats.assigned +
         "</b> asignados</span><span><b>" +
         Math.round(model.stats.moral) +
-        '%</b> moral</span></div><div class="zone-citizen-list">';
+        '%</b> moral</span></div><h3 class="zone-system-subtitle">GESTIÓN DE TRABAJADORES</h3>' +
+        '<p class="zone-labor-help">El sistema cubre primero la prioridad máxima. Si faltan habitantes, reasigna automáticamente desde tareas inferiores. MAX deja trabajar a todos los disponibles.</p>' +
+        '<div class="zone-labor-list">';
+      for (let i = 0; i < model.labor.length; i++) {
+        const row = model.labor[i],
+          maximum = row.max >= CFG.WORK.MAX_WORKERS ? "MAX" : row.max,
+          status = row.jobs
+            ? row.blocked
+              ? row.blocked + " de " + row.jobs + " trabajos bloqueados"
+              : row.jobs + (row.jobs === 1 ? " trabajo activo" : " trabajos activos")
+            : "sin trabajos activos";
+        let marks = "";
+        for (let level = CFG.PRIORITY.LOWEST; level <= CFG.PRIORITY.HIGHEST; level++)
+          marks += '<i class="' + (level <= row.priority ? "on" : "") + '"></i>';
+        html +=
+          '<article class="zone-labor-row priority-' +
+          row.priority +
+          (row.blocked ? " blocked" : "") +
+          '"><header><span class="zone-icon ' +
+          LABOR_ICON[row.kind] +
+          '"></span><span><b>' +
+          LABOR_LABEL[row.kind] +
+          "</b><small>" +
+          status +
+          '</small></span><strong title="asignados / solicitados">' +
+          row.assigned +
+          "/" +
+          row.requested +
+          '</strong></header><div class="zone-labor-controls"><span class="zone-labor-priority"><small>prioridad</small><button type="button" data-work-priority="' +
+          row.kind +
+          '" data-work-priority-delta="-1" ' +
+          (row.priority <= CFG.PRIORITY.OFF ? "disabled" : "") +
+          '>−</button><em title="' +
+          PRIORITY_LABEL[row.priority] +
+          '">' +
+          marks +
+          "<b>" +
+          PRIORITY_LABEL[row.priority] +
+          '</b></em><button type="button" data-work-priority="' +
+          row.kind +
+          '" data-work-priority-delta="1" ' +
+          (row.priority >= CFG.PRIORITY.HIGHEST ? "disabled" : "") +
+          '>+</button></span><span class="zone-labor-maximum"><small>máx.</small><button type="button" data-work-max="' +
+          row.kind +
+          '" data-work-max-delta="-1" ' +
+          (row.max <= 0 ? "disabled" : "") +
+          ">−</button><b>" +
+          maximum +
+          '</b><button type="button" data-work-max="' +
+          row.kind +
+          '" data-work-max-delta="1" ' +
+          (row.max >= CFG.WORK.MAX_WORKERS ? "disabled" : "") +
+          '>+</button><button type="button" class="zone-labor-max-all" data-work-max-all="' +
+          row.kind +
+          '" ' +
+          (row.max >= CFG.WORK.MAX_WORKERS ? "disabled" : "") +
+          ">MAX</button></span></div></article>";
+      }
+      html +=
+        '</div><h3 class="zone-system-subtitle">HABITANTES</h3><div class="zone-citizen-list">';
       for (let i = 0; i < model.citizens.length; i++) {
         const citizen = model.citizens[i],
           role =

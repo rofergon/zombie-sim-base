@@ -193,7 +193,10 @@
       field.active = !field.active;
       const job = this.tasks && this.tasks.forField(field.id);
       if (job)
-        this.tasks.setPriority(job.id, field.active ? CFG.PRIORITY.NORMAL : CFG.PRIORITY.OFF);
+        this.tasks.setPriority(
+          job.id,
+          field.active ? this.tasks.defaultPriorityFor(job) : CFG.PRIORITY.OFF,
+        );
       if (this.onChanged) this.onChanged();
       return true;
     }
@@ -209,7 +212,7 @@
       const job = field && this.tasks && this.tasks.forField(field.id);
       if (!job) return false;
       let next = job.priority + 1;
-      if (next > CFG.PRIORITY.HIGH) next = CFG.PRIORITY.LOW;
+      if (next > CFG.PRIORITY.HIGHEST) next = CFG.PRIORITY.LOWEST;
       field.active = next !== CFG.PRIORITY.OFF;
       return this.tasks.setPriority(job.id, next);
     }
