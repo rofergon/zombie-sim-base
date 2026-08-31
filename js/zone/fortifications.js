@@ -7,6 +7,7 @@
   const CFG = ZS.ZoneConfig;
   const F = CFG.FORTIFICATION;
   const R = CFG.RESOURCE;
+  const W = CFG.WEAPON;
   const SIZE = CFG.DEFENSE.GRID;
   const HALF = SIZE / 2;
 
@@ -37,6 +38,9 @@
       for (let i = this.list.length - 1; i >= 0; i--) {
         const record = this.list[i];
         record.attackT = 0;
+        record.operatorId = null;
+        record.weapon = W.MACHETE;
+        record.occupied = false;
         record.cells = [];
         if (!this._canOccupy(record.x, record.y, record.kind, record)) this.list.splice(i, 1);
         else this._claimCells(record);
@@ -47,6 +51,7 @@
       this.scenario = scenario;
       this.agents = agents;
       this.onChanged = onChanged;
+      if (scenario.defense && scenario.defense.data.active) this.staffTowers();
     }
 
     connectAgriculture(agriculture) {
@@ -127,10 +132,15 @@
           maxHP,
           armed: kind === F.TRAP,
           attackT: 0,
+          ammoShots: 0,
+          operatorId: null,
+          weapon: W.MACHETE,
+          occupied: false,
           cells: [],
         };
       this.list.push(record);
       this._claimCells(record);
+      if (kind === F.TOWER && this.scenario.defense.data.active) this.staffTowers();
       if (this.onChanged) this.onChanged();
       return record;
     }
@@ -189,11 +199,107 @@
       }
     }
 
+    staffTowers() {
+      const citizens = this.scenario && this.scenario.citizens,
+        weapons = this.scenario && this.scenario.weapons;
+      if (!citizens || !weapons) return 0;
+      const available = weapons.armory.slice();
+      for (let i = 0; i < citizens.byId.length; i++) {
+        const citizen = citizens.byId[i];
+        if (citizen) citizen.towerId = null;
+      }
+      let staffed = 0;
+      for (let i = 0; i < this.list.length; i++) {
+        const record = this.list[i];
+        if (record.kind !== F.TOWER) continue;
+        record.operatorId = null;
+        record.weapon = W.MACHETE;
+        record.occupied = false;
+        let operator = null;
+        for (let id = 0; id < citizens.byId.length; id++) {
+          const candidate = citizens.byId[id];
+          if (
+            candidate &&
+            !candidate.dead &&
+            !candidate.away &&
+            candidate.role === CFG.ROLE.WORKER &&
+            candidate.towerId === null &&
+            citizens.carryTotal(candidate) === 0
+          ) {
+            operator = candidate;
+            break;
+          }
+        }
+        if (!operator) continue;
+        record.operatorId = operator.cid;
+        operator.towerId = record.id;
+        for (let weapon = W.SNIPER; weapon >= W.PISTOL; weapon--)
+          if (available[weapon] > 0) {
+            available[weapon]--;
+            record.weapon = weapon;
+            break;
+          }
+        staffed++;
+      }
+      if (this.onChanged) this.onChanged();
+      return staffed;
+    }
+
+    releaseTowers() {
+      const citizens = this.scenario && this.scenario.citizens;
+      if (citizens)
+        for (let i = 0; i < citizens.byId.length; i++) {
+          const citizen = citizens.byId[i];
+          if (citizen) citizen.towerId = null;
+        }
+      for (let i = 0; i < this.list.length; i++) {
+        const record = this.list[i];
+        if (record.kind !== F.TOWER) continue;
+        record.operatorId = null;
+        record.weapon = W.MACHETE;
+        record.occupied = false;
+      }
+      if (this.onChanged) this.onChanged();
+    }
+
+    updateOperator(citizen, dt, t, nav) {
+      if (!citizen || citizen.towerId === null || !this.scenario.defense.data.active) return false;
+      let tower = null;
+      for (let i = 0; i < this.list.length; i++)
+        if (this.list[i].id === citizen.towerId) {
+          tower = this.list[i];
+          break;
+        }
+      if (!tower) {
+        citizen.towerId = null;
+        return false;
+      }
+      const side = citizen.cid % 4;
+      citizen.workTarget.x = tower.x + (side === 0 ? 28 : side === 2 ? -28 : 0);
+      citizen.workTarget.y = tower.y + (side === 1 ? 28 : side === 3 ? -28 : 0);
+      if (Math.hypot(citizen.x - citizen.workTarget.x, citizen.y - citizen.workTarget.y) > 7)
+        ZS.planAndFollow(citizen, citizen.workTarget, false, CFG.AGENT.SPEED, dt, t, nav);
+      else {
+        citizen.wantMove = false;
+        citizen.vx = citizen.vy = 0;
+      }
+      tower.occupied = Math.hypot(citizen.x - tower.x, citizen.y - tower.y) <= 40;
+      return true;
+    }
+
     _updateTower(record, dt) {
       record.attackT = Math.max(0, record.attackT - dt);
-      if (record.attackT > 0 || this.state.stock[R.AMMO] <= 0) return;
+      if (!this.scenario.defense.data.active || record.operatorId === null) return;
+      const operator = this.scenario.citizens.at(record.operatorId);
+      if (!operator || operator.dead || operator.towerId !== record.id) {
+        this.staffTowers();
+        return;
+      }
+      if (record.attackT > 0 || !record.occupied) return;
+      const firearm = record.weapon > W.MACHETE && this._hasTowerAmmo(record),
+        range = firearm ? CFG.DEFENSE.TOWER_RANGE : CFG.DEFENSE.BOW_RANGE;
       let target = null,
-        best = CFG.DEFENSE.TOWER_RANGE * CFG.DEFENSE.TOWER_RANGE;
+        best = range * range;
       for (let i = 0; i < this.agents.length; i++) {
         const enemy = this.agents[i];
         if (!enemy.zoneEnemy || enemy.dead) continue;
@@ -209,14 +315,26 @@
         }
       }
       if (!target) return;
-      record.attackT = CFG.DEFENSE.TOWER_SECONDS;
-      this.state.stock[R.AMMO]--;
-      target.hp -= CFG.DEFENSE.TOWER_DAMAGE;
+      record.attackT = firearm ? CFG.DEFENSE.TOWER_SECONDS : CFG.DEFENSE.BOW_SECONDS;
+      if (firearm) this._fireTower(record);
+      target.hp -= firearm ? CFG.DEFENSE.TOWER_DAMAGE : CFG.DEFENSE.BOW_DAMAGE;
       target.flash = 0.12;
       ZS.fx.push({ x0: record.x, y0: record.y - 25, x1: target.x, y1: target.y - 6, t: 0.1 });
-      if (ZS.sound) ZS.sound.event("turret", record.x, record.y);
+      if (firearm && ZS.sound) ZS.sound.event("turret", record.x, record.y);
       if (target.hp <= 0) this.scenario.scavenge.killEnemy(target);
       if (this.onChanged) this.onChanged();
+    }
+
+    _hasTowerAmmo(record) {
+      return record.ammoShots > 0 || this.state.stock[R.AMMO] > 0;
+    }
+
+    _fireTower(record) {
+      if (record.ammoShots <= 0) {
+        this.state.stock[R.AMMO]--;
+        record.ammoShots = CFG.AMMO_SHOTS_PER_UNIT;
+      }
+      record.ammoShots--;
     }
 
     _updateTrap(record) {
@@ -342,6 +460,7 @@
           hp: record.hp,
           maxHP: record.maxHP,
           armed: record.armed,
+          ammoShots: record.ammoShots,
         });
       }
       this.state.zone.fortifications = out;

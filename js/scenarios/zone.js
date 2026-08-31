@@ -346,6 +346,7 @@
       }
       this.citizens.updateNeeds(agent, dt);
       if (agent.role === CFG.ROLE.SQUAD) this.squads.update(agent, dt, t, nav);
+      else if (this.fortifications.updateOperator(agent, dt, t, nav)) return;
       else this.tasks.updateWorker(agent, dt, t, nav);
     }
 

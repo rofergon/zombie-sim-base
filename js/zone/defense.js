@@ -116,6 +116,7 @@
           true,
         );
       }
+      this.fortifications.staffTowers();
       if (ZS.sound) ZS.sound.event("horn", this.map.hq.cx, this.map.hq.cy);
       if (this.scenario.campaign) this.scenario.campaign.onNightStarted();
       if (this.onChanged) this.onChanged();
@@ -405,6 +406,7 @@
       this.data.live = 0;
       for (let i = 0; i < this.agents.length; i++)
         if (this.agents[i].zoneHorde) this.agents[i].dead = true;
+      this.fortifications.releaseTowers();
       const report = {
         day: this.data.lastStartedDay,
         kills: this.data.kills,
