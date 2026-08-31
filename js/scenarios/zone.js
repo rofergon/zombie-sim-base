@@ -1732,7 +1732,7 @@
         best = Math.pow(CFG.AGENT.SELECT_R / Math.max(0.5, zoom), 2);
       for (let i = 0; this.agents && i < this.agents.length; i++) {
         const agent = this.agents[i];
-        if (!agent.zoneCitizen || agent.dead) continue;
+        if (!agent.zoneCitizen || agent.dead || agent.away) continue;
         const dx = agent.x - x,
           dy = agent.y - y,
           d = dx * dx + dy * dy;
@@ -1783,6 +1783,7 @@
         if (
           agent.zoneCitizen &&
           !agent.dead &&
+          !agent.away &&
           agent.squadId !== null &&
           agent.x >= x0 &&
           agent.x <= x1 &&
@@ -2365,6 +2366,8 @@
       if (!this.map.records.length) return;
       this.map.capture();
       this.weapons.capture();
+      this.vehicles.capture();
+      this.threats.capture();
       this.squads.capture();
       this.citizens.capture();
       this.agriculture.capture();

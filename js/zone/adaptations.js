@@ -29,6 +29,7 @@
       this.updateT = 0;
       this.medT = 0;
       this.overcrowded = false;
+      this.logistics = null;
     }
 
     connect(citizens, tasks, onChanged, onResearchComplete) {
@@ -38,6 +39,10 @@
       this.onResearchComplete = onResearchComplete || null;
       this.recalculatePower();
       this.ensureProductionJobs();
+    }
+
+    connectLogistics(logistics) {
+      this.logistics = logistics;
     }
 
     isUnlocked(use) {
@@ -368,31 +373,39 @@
       if (record.use === U.FARM) {
         const fertilized = record.fertilized && this.state.zone.tech[T.FERTILIZATION];
         if (fertilized) this.state.stock[R.FERTILIZER] -= CFG.ADAPT.FARM_FERTILIZER;
-        this.state.stock[R.GRAIN] += fertilized
-          ? CFG.ADAPT.FARM_FERTILIZED_GRAIN
-          : CFG.ADAPT.FARM_GRAIN;
+        const output = fertilized ? CFG.ADAPT.FARM_FERTILIZED_GRAIN : CFG.ADAPT.FARM_GRAIN;
+        if (this.logistics) this.logistics.deposit(R.GRAIN, output);
+        else this.state.stock[R.GRAIN] += output;
         return true;
       }
       if (record.use === U.BARN) {
         this.state.stock[R.GRAIN] -= CFG.ADAPT.BARN_GRAIN;
-        this.state.stock[R.MEAT] += CFG.ADAPT.BARN_MEAT;
-        this.state.stock[R.FERTILIZER] += CFG.ADAPT.BARN_FERTILIZER;
+        if (this.logistics) {
+          this.logistics.deposit(R.MEAT, CFG.ADAPT.BARN_MEAT);
+          this.logistics.deposit(R.FERTILIZER, CFG.ADAPT.BARN_FERTILIZER);
+        } else {
+          this.state.stock[R.MEAT] += CFG.ADAPT.BARN_MEAT;
+          this.state.stock[R.FERTILIZER] += CFG.ADAPT.BARN_FERTILIZER;
+        }
         return true;
       }
       if (record.use === U.COOKHOUSE) {
         this.state.stock[R.WOOD] -= CFG.ADAPT.COOKHOUSE_WOOD;
         if (record.recipe === CFG.RECIPE.GRAIN) {
           this.state.stock[R.GRAIN] -= CFG.ADAPT.COOKHOUSE_GRAIN;
-          this.state.stock[R.FOOD] += CFG.ADAPT.COOKHOUSE_GRAIN_FOOD;
+          if (this.logistics) this.logistics.deposit(R.FOOD, CFG.ADAPT.COOKHOUSE_GRAIN_FOOD);
+          else this.state.stock[R.FOOD] += CFG.ADAPT.COOKHOUSE_GRAIN_FOOD;
         } else {
           this.state.stock[R.MEAT] -= CFG.ADAPT.COOKHOUSE_MEAT;
-          this.state.stock[R.FOOD] += CFG.ADAPT.COOKHOUSE_MEAT_FOOD;
+          if (this.logistics) this.logistics.deposit(R.FOOD, CFG.ADAPT.COOKHOUSE_MEAT_FOOD);
+          else this.state.stock[R.FOOD] += CFG.ADAPT.COOKHOUSE_MEAT_FOOD;
         }
         return true;
       }
       if (record.use === U.WORKSHOP && this.state.stock[R.METAL] >= CFG.ADAPT.WORKSHOP_METAL) {
         this.state.stock[R.METAL] -= CFG.ADAPT.WORKSHOP_METAL;
-        this.state.stock[R.AMMO] += CFG.ADAPT.WORKSHOP_AMMO;
+        if (this.logistics) this.logistics.deposit(R.AMMO, CFG.ADAPT.WORKSHOP_AMMO);
+        else this.state.stock[R.AMMO] += CFG.ADAPT.WORKSHOP_AMMO;
         return true;
       }
       return false;
@@ -415,6 +428,7 @@
 
     canProduce(record) {
       if (!record || !record.active || !record.powered || record.hp <= 0) return false;
+      if (this.logistics && !this.logistics.canFit(this.productionOutput(record))) return false;
       if (record.use === U.FARM)
         return (
           !record.fertilized ||
@@ -433,11 +447,28 @@
       return false;
     }
 
+    productionOutput(record) {
+      if (!record) return 0;
+      if (record.use === U.FARM)
+        return record.fertilized && this.state.zone.tech[T.FERTILIZATION]
+          ? CFG.ADAPT.FARM_FERTILIZED_GRAIN
+          : CFG.ADAPT.FARM_GRAIN;
+      if (record.use === U.BARN) return CFG.ADAPT.BARN_MEAT + CFG.ADAPT.BARN_FERTILIZER;
+      if (record.use === U.COOKHOUSE)
+        return record.recipe === CFG.RECIPE.GRAIN
+          ? CFG.ADAPT.COOKHOUSE_GRAIN_FOOD
+          : CFG.ADAPT.COOKHOUSE_MEAT_FOOD;
+      if (record.use === U.WORKSHOP) return CFG.ADAPT.WORKSHOP_AMMO;
+      return 0;
+    }
+
     productionStatus(record) {
       if (!record || record.hp <= 0) return "destruido";
       if (!record.active) return "pausado";
       if (!record.powered) return "sin energía";
       if (!this.canProduce(record)) {
+        if (this.logistics && !this.logistics.canFit(this.productionOutput(record)))
+          return "sin espacio de almacén";
         if (record.use === U.FARM && record.fertilized) return "sin fertilizante";
         if (record.use === U.BARN) return "sin grano";
         if (record.use === U.COOKHOUSE)

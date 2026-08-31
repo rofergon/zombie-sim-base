@@ -24,6 +24,7 @@
       this.citizens = null;
       this.fortifications = null;
       this.onChanged = null;
+      this.logistics = null;
       this.list = state.zone.fields;
       this.preview = { x: 0, y: 0, kind: 0, remove: false, valid: false };
       this.weatherData = { season: "primavera", temperature: 15, rate: 1, label: "templado" };
@@ -53,6 +54,10 @@
       this.fortifications = fortifications;
       this.onChanged = onChanged;
       this.ensureJobs();
+    }
+
+    connectLogistics(logistics) {
+      this.logistics = logistics;
     }
 
     ensureJobs() {
@@ -265,6 +270,9 @@
 
     canProduce(field) {
       if (!field || !field.active || field.hp <= 0) return false;
+      const fertilized = field.fertilized && this.state.zone.tech[T.FERTILIZATION],
+        output = fertilized ? A.FERTILIZED_GRAIN[field.kind] : A.GRAIN[field.kind];
+      if (this.logistics && !this.logistics.canFit(output)) return false;
       return (
         !field.fertilized ||
         (this.state.zone.tech[T.FERTILIZATION] &&
@@ -276,15 +284,18 @@
       if (!this.canProduce(field)) return false;
       const fertilized = field.fertilized && this.state.zone.tech[T.FERTILIZATION];
       if (fertilized) this.state.stock[R.FERTILIZER] -= A.FERTILIZER[field.kind];
-      this.state.stock[R.GRAIN] += fertilized
-        ? A.FERTILIZED_GRAIN[field.kind]
-        : A.GRAIN[field.kind];
+      const output = fertilized ? A.FERTILIZED_GRAIN[field.kind] : A.GRAIN[field.kind];
+      if (this.logistics) this.logistics.deposit(R.GRAIN, output);
+      else this.state.stock[R.GRAIN] += output;
       return true;
     }
 
     productionStatus(field) {
       if (!field || field.hp <= 0) return "destruido";
       if (!field.active) return "pausado";
+      const fertilized = field.fertilized && this.state.zone.tech[T.FERTILIZATION],
+        output = fertilized ? A.FERTILIZED_GRAIN[field.kind] : A.GRAIN[field.kind];
+      if (this.logistics && !this.logistics.canFit(output)) return "sin espacio de almacén";
       if (field.fertilized && this.state.stock[R.FERTILIZER] < A.FERTILIZER[field.kind])
         return "sin fertilizante";
       const weather = this.weather();
