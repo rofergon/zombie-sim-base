@@ -1,17 +1,114 @@
-/* Sound: sketch-style WebAudio synth, no assets (file:// safe). The
-   scenario fires events via ZS.sound.event(name, x, y) — the engine
-   spatializes them against the camera, rate-limits per type, and stays
-   silent until the first user gesture unlocks audio (autoplay policy).
-   main.js wires unlock() to pointerdown and tick(dt) into the loop. */
+/* Sound: sketch-style WebAudio synth plus a small vendored CC0 sample
+   library (file:// safe). The scenario fires events and describes its
+   camera soundscape; this layer owns loading, pooling, spatialization and
+   rate limits. Audio stays silent until a user gesture unlocks it. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
 
+  // CC0 recordings vendored under assets/audio. Scenario packs only name
+  // these neutral sounds; loading, pooling and camera spatialization stay in
+  // this shared layer. See assets/audio/SOURCES.md for provenance.
+  const MEDIA = Object.freeze({
+    wind: Object.freeze({ src: "assets/audio/ambience/wind.ogg", gain: 0.2 }),
+    birds: Object.freeze({ src: "assets/audio/ambience/birds.ogg", gain: 0.15 }),
+    crickets: Object.freeze({ src: "assets/audio/ambience/crickets.mp3", gain: 0.16 }),
+    tension: Object.freeze({ src: "assets/audio/ambience/tension.ogg", gain: 0.12 }),
+    water: Object.freeze({ src: "assets/audio/ambience/water.ogg", gain: 0.24 }),
+    generator: Object.freeze({ src: "assets/audio/ambience/generator.ogg", gain: 0.34 }),
+    workshop: Object.freeze({ src: "assets/audio/ambience/workshop.ogg", gain: 0.18 }),
+    research: Object.freeze({ src: "assets/audio/ambience/research.ogg", gain: 0.12 }),
+    construction: Object.freeze({ src: "assets/audio/ambience/construction.ogg", gain: 0.17 }),
+    hammer_metal_1: Object.freeze({ src: "assets/audio/sfx/hammer-metal-01.ogg", gain: 0.42 }),
+    hammer_metal_2: Object.freeze({ src: "assets/audio/sfx/hammer-metal-02.ogg", gain: 0.42 }),
+    hammer_wood_1: Object.freeze({ src: "assets/audio/sfx/hammer-wood-01.ogg", gain: 0.4 }),
+    hammer_wood_2: Object.freeze({ src: "assets/audio/sfx/hammer-wood-02.ogg", gain: 0.4 }),
+    tools_1: Object.freeze({ src: "assets/audio/sfx/tools-01.ogg", gain: 0.33 }),
+    tools_2: Object.freeze({ src: "assets/audio/sfx/tools-02.ogg", gain: 0.33 }),
+    metal_hit_1: Object.freeze({ src: "assets/audio/sfx/metal-hit-01.ogg", gain: 0.38 }),
+    metal_hit_2: Object.freeze({ src: "assets/audio/sfx/metal-hit-02.ogg", gain: 0.38 }),
+    stone_hit: Object.freeze({ src: "assets/audio/sfx/stone-hit.ogg", gain: 0.3 }),
+    door: Object.freeze({ src: "assets/audio/sfx/door-01.ogg", gain: 0.38 }),
+    ui_click: Object.freeze({ src: "assets/audio/sfx/ui-click.ogg", gain: 0.24 }),
+    ui_confirm: Object.freeze({ src: "assets/audio/sfx/ui-confirm.ogg", gain: 0.28 }),
+  });
+  const ENV_LAYERS = 2;
+  const ENV_EMITTERS = 6;
+  const SAMPLE_VOICES = 10;
+  const scene = {
+    x: 0,
+    y: 0,
+    viewRadius: 700,
+    count: 0,
+    layerKeys: Array.from({ length: ENV_LAYERS }, () => null),
+    layerGains: new Float32Array(ENV_LAYERS),
+    emitters: Array.from({ length: ENV_EMITTERS }, () => ({
+      id: 0,
+      key: null,
+      x: 0,
+      y: 0,
+      gain: 0,
+      range: 0,
+      distance2: 0,
+    })),
+    reset(cam) {
+      this.x = cam.x;
+      this.y = cam.y;
+      this.viewRadius =
+        Math.max(window.innerWidth || 1280, window.innerHeight || 720) /
+        Math.max(0.1, cam.zoom) /
+        2;
+      this.count = 0;
+      for (let i = 0; i < ENV_LAYERS; i++) {
+        this.layerKeys[i] = null;
+        this.layerGains[i] = 0;
+      }
+    },
+    layer(index, key, gain) {
+      if (index < 0 || index >= ENV_LAYERS || !MEDIA[key]) return;
+      this.layerKeys[index] = key;
+      this.layerGains[index] = Math.max(0, gain || 0);
+    },
+    emitter(id, key, x, y, gain, range) {
+      if (!MEDIA[key] || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      const dx = x - this.x,
+        dy = y - this.y,
+        distance2 = dx * dx + dy * dy,
+        audible = Math.max(80, range || 500) + this.viewRadius * 0.35;
+      if (distance2 > audible * audible) return;
+      let index = this.count;
+      if (index >= ENV_EMITTERS) {
+        index = 0;
+        for (let i = 1; i < ENV_EMITTERS; i++)
+          if (this.emitters[i].distance2 > this.emitters[index].distance2) index = i;
+        if (distance2 >= this.emitters[index].distance2) return;
+      } else this.count++;
+      const record = this.emitters[index];
+      record.id = id;
+      record.key = key;
+      record.x = x;
+      record.y = y;
+      record.gain = Math.max(0, gain || 0);
+      record.range = Math.max(80, range || 500);
+      record.distance2 = distance2;
+    },
+  };
+
   let ac = null,
     master = null,
-    nbuf = null;
+    nbuf = null,
+    ambientBus = null,
+    sampleBus = null;
   let voices = 0; // live source nodes (cap: keep the mix breathable)
   let curPan = 0; // scene position -> stereo pan (set by event/tick)
+  let mediaReady = false;
+  let mediaVoice = 0;
+  let emitterEpoch = 0;
+  let sceneT = 0;
+  const ambientLayers = [];
+  const emitterSlots = [];
+  const sampleSlots = [];
+  const spatialResult = { v: 0, p: 0 };
   // per-type cooldowns (seconds): a firefight is loud, not a blender
   const CD = {
     shot_rifle: 0.07,
@@ -24,6 +121,15 @@
     fire: 0.2,
     turret: 0.3,
     horn: 4,
+    ui_click: 0.025,
+    ui_confirm: 0.12,
+    order: 0.08,
+    door_open: 0.25,
+    work_build: 0.24,
+    work_wood: 0.22,
+    work_metal: 0.22,
+    work_tools: 0.28,
+    work_stone: 0.28,
     // the formant voice lines
     v_shout: 0.35,
     v_gasp: 0.3,
@@ -49,12 +155,180 @@
         master = ac.createGain();
         master.gain.value = ZS.settings ? ZS.settings.soundLevel() : 0.5;
         master.connect(ac.destination);
+        ambientBus = ac.createGain();
+        ambientBus.gain.value = 0.7;
+        ambientBus.connect(master);
+        sampleBus = ac.createGain();
+        sampleBus.gain.value = 0.78;
+        sampleBus.connect(master);
+        ensureMedia();
       } catch {
         ac = null;
         return;
       }
     }
     if (ac.state === "suspended") ac.resume();
+  }
+
+  function setParam(param, value, ease) {
+    const now = ac.currentTime;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.setTargetAtTime(value, now, ease || 0.08);
+  }
+
+  function makeMediaSlot(loop, spatial, bus) {
+    const media = new Audio();
+    media.preload = "auto";
+    media.loop = loop;
+    media.playsInline = true;
+    const source = ac.createMediaElementSource(media),
+      gain = ac.createGain(),
+      pan = spatial && typeof ac.createStereoPanner === "function" ? ac.createStereoPanner() : null,
+      slot = {
+        media,
+        source,
+        gain,
+        pan,
+        key: null,
+        id: 0,
+        epoch: 0,
+      };
+    gain.gain.value = 0;
+    source.connect(gain);
+    if (pan) {
+      gain.connect(pan);
+      pan.connect(bus);
+    } else gain.connect(bus);
+    return slot;
+  }
+
+  function playMedia(slot, key, loop, rate) {
+    const def = MEDIA[key];
+    if (!def) return false;
+    if (slot.key !== key) {
+      slot.media.pause();
+      slot.key = key;
+      slot.media.src = new URL(def.src, document.baseURI).href;
+      slot.media.load();
+    }
+    slot.media.loop = loop;
+    slot.media.playbackRate = rate || 1;
+    if (!loop) {
+      try {
+        slot.media.currentTime = 0;
+      } catch {
+        // A newly assigned file may not have metadata yet; play() starts it at zero.
+      }
+    }
+    const promise = slot.media.play();
+    if (promise && typeof promise.catch === "function") promise.catch(() => {});
+    return true;
+  }
+
+  function ensureMedia() {
+    if (mediaReady || !ac || !ambientBus || !sampleBus) return;
+    mediaReady = true;
+    for (let i = 0; i < ENV_LAYERS; i++)
+      ambientLayers.push({
+        active: 0,
+        tracks: [makeMediaSlot(true, false, ambientBus), makeMediaSlot(true, false, ambientBus)],
+      });
+    for (let i = 0; i < ENV_EMITTERS; i++) emitterSlots.push(makeMediaSlot(true, true, ambientBus));
+    for (let i = 0; i < SAMPLE_VOICES; i++) sampleSlots.push(makeMediaSlot(false, true, sampleBus));
+  }
+
+  function setLayer(index, key, gain) {
+    const layer = ambientLayers[index];
+    if (!layer) return;
+    const active = layer.tracks[layer.active],
+      target = key && MEDIA[key] ? MEDIA[key].gain * Math.max(0, gain || 0) : 0;
+    if (!key || !MEDIA[key]) {
+      setParam(layer.tracks[0].gain.gain, 0, 0.38);
+      setParam(layer.tracks[1].gain.gain, 0, 0.38);
+      return;
+    }
+    if (active.key === key) {
+      setParam(active.gain.gain, target, 0.32);
+      return;
+    }
+    const nextIndex = 1 - layer.active,
+      next = layer.tracks[nextIndex];
+    setParam(active.gain.gain, 0, 0.42);
+    next.gain.gain.cancelScheduledValues(ac.currentTime);
+    next.gain.gain.setValueAtTime(0, ac.currentTime);
+    playMedia(next, key, true, 1);
+    setParam(next.gain.gain, target, 0.42);
+    layer.active = nextIndex;
+  }
+
+  function sampled(key, x, y, base, rate) {
+    if (!mediaReady || !ac || ac.state !== "running" || !MEDIA[key]) return false;
+    const slot = sampleSlots[mediaVoice++ % sampleSlots.length],
+      positioned = Number.isFinite(x) && Number.isFinite(y),
+      s = positioned ? sp(x, y, 1, 720) : spatialResult,
+      volume =
+        MEDIA[key].gain * Math.max(0, base === undefined ? 1 : base) * (positioned ? s.v : 1);
+    if (volume < 0.008) return false;
+    if (!positioned) {
+      s.v = 1;
+      s.p = 0;
+    }
+    setParam(slot.gain.gain, volume, 0.006);
+    if (slot.pan) setParam(slot.pan.pan, s.p, 0.01);
+    return playMedia(slot, key, false, rate || 1);
+  }
+
+  function updateEmitters() {
+    emitterEpoch++;
+    for (let i = 0; i < scene.count; i++) {
+      const emitter = scene.emitters[i];
+      let slot = null;
+      for (let j = 0; j < emitterSlots.length; j++)
+        if (
+          emitterSlots[j].id === emitter.id &&
+          emitterSlots[j].key === emitter.key &&
+          emitterSlots[j].epoch !== emitterEpoch
+        ) {
+          slot = emitterSlots[j];
+          break;
+        }
+      if (!slot)
+        for (let j = 0; j < emitterSlots.length; j++)
+          if (emitterSlots[j].epoch !== emitterEpoch) {
+            slot = emitterSlots[j];
+            break;
+          }
+      if (!slot) continue;
+      slot.epoch = emitterEpoch;
+      slot.id = emitter.id;
+      const s = sp(emitter.x, emitter.y, emitter.gain, emitter.range),
+        def = MEDIA[emitter.key],
+        volume = def ? def.gain * s.v : 0;
+      if (slot.key !== emitter.key) {
+        slot.gain.gain.cancelScheduledValues(ac.currentTime);
+        slot.gain.gain.setValueAtTime(0, ac.currentTime);
+        playMedia(slot, emitter.key, true, 1);
+      }
+      setParam(slot.gain.gain, volume, 0.18);
+      if (slot.pan) setParam(slot.pan.pan, s.p, 0.12);
+    }
+    for (let i = 0; i < emitterSlots.length; i++)
+      if (emitterSlots[i].epoch !== emitterEpoch) setParam(emitterSlots[i].gain.gain, 0, 0.22);
+  }
+
+  function updateSoundscape(sc) {
+    const cam = ZS.debug && ZS.debug.cam;
+    if (!cam || !sc || typeof sc.soundscape !== "function") {
+      for (let i = 0; i < ENV_LAYERS; i++) setLayer(i, null, 0);
+      scene.count = 0;
+      updateEmitters();
+      return;
+    }
+    scene.reset(cam);
+    sc.soundscape(scene);
+    for (let i = 0; i < ENV_LAYERS; i++) setLayer(i, scene.layerKeys[i], scene.layerGains[i]);
+    updateEmitters();
   }
 
   // 2s of reusable white noise (the boom tail needs it)
@@ -117,12 +391,19 @@
   // scene position -> (volume, pan) for the camera
   function sp(x, y, base, range) {
     const c = ZS.debug && ZS.debug.cam;
-    if (!c) return { v: 0.4 * base, p: 0 };
+    if (!c) {
+      spatialResult.v = 0.4 * base;
+      spatialResult.p = 0;
+      return spatialResult;
+    }
     const dx = x - c.x,
       dy = y - c.y,
-      d = Math.hypot(dx, dy);
-    const v = base * Math.max(0, 1 - d / (range || 700));
-    return { v, p: Math.max(-0.75, Math.min(0.75, dx / 900)) };
+      d = Math.hypot(dx, dy),
+      halfWidth = (window.innerWidth || 1280) / Math.max(0.1, c.zoom) / 2,
+      audible = range || Math.max(700, halfWidth * 1.08);
+    spatialResult.v = base * Math.max(0, 1 - d / audible);
+    spatialResult.p = Math.max(-0.82, Math.min(0.82, dx / Math.max(240, halfWidth)));
+    return spatialResult;
   }
 
   // ---- formant voice engine (the lines picked from .verify/voices.html,
@@ -818,6 +1099,59 @@
     const now = performance.now() / 1000;
     if (last[name] && now < last[name]) return;
     last[name] = now + (CD[name] || 0.15);
+    switch (name) {
+      case "ui_click":
+        sampled("ui_click", NaN, NaN, 1, 0.98 + Math.random() * 0.04);
+        return;
+      case "ui_confirm":
+        sampled("ui_confirm", NaN, NaN, 1, 0.98 + Math.random() * 0.04);
+        return;
+      case "order":
+        sampled("ui_confirm", x, y, 0.72, 1.04 + Math.random() * 0.04);
+        return;
+      case "door_open":
+        sampled("door", x, y, 0.9, 0.96 + Math.random() * 0.08);
+        return;
+      case "work_build":
+        sampled(
+          Math.random() < 0.5 ? "hammer_metal_1" : "hammer_wood_1",
+          x,
+          y,
+          0.72,
+          0.93 + Math.random() * 0.12,
+        );
+        return;
+      case "work_wood":
+        sampled(
+          Math.random() < 0.5 ? "hammer_wood_1" : "hammer_wood_2",
+          x,
+          y,
+          0.68,
+          0.92 + Math.random() * 0.14,
+        );
+        return;
+      case "work_metal":
+        sampled(
+          Math.random() < 0.5 ? "metal_hit_1" : "metal_hit_2",
+          x,
+          y,
+          0.7,
+          0.94 + Math.random() * 0.12,
+        );
+        return;
+      case "work_tools":
+        sampled(
+          Math.random() < 0.5 ? "tools_1" : "tools_2",
+          x,
+          y,
+          0.64,
+          0.94 + Math.random() * 0.12,
+        );
+        return;
+      case "work_stone":
+        sampled("stone_hit", x, y, 0.62, 0.92 + Math.random() * 0.13);
+        return;
+    }
     const s = sp(x, y, 1);
     curPan = s.p;
     if (s.v < 0.03 && name !== "boom" && name !== "horn") return;
@@ -922,6 +1256,11 @@
   function tick(dt) {
     if (!ac || ac.state !== "running" || !ZS.debug) return;
     const sc = ZS.debug.scenario;
+    sceneT -= dt;
+    if (sceneT <= 0) {
+      sceneT = 0.2;
+      updateSoundscape(sc);
+    }
     if (!sc || !sc.fx) return;
     crackleT -= dt;
     if (crackleT > 0) return;
@@ -948,7 +1287,33 @@
     master.gain.setTargetAtTime(level, ac.currentTime, 0.02);
   }
 
+  function debugState() {
+    return {
+      context: ac ? ac.state : "none",
+      mediaReady,
+      layers: ambientLayers.map((layer) => {
+        const slot = layer.tracks[layer.active];
+        return {
+          key: slot.key,
+          paused: slot.media.paused,
+          readyState: slot.media.readyState,
+          error: slot.media.error ? slot.media.error.code : 0,
+        };
+      }),
+      emitters: emitterSlots
+        .filter((slot) => slot.gain.gain.value > 0.001)
+        .map((slot) => ({
+          id: slot.id,
+          key: slot.key,
+          paused: slot.media.paused,
+          readyState: slot.media.readyState,
+          error: slot.media.error ? slot.media.error.code : 0,
+        })),
+    };
+  }
+
   ZS.sound = {
+    debugState,
     event,
     tick,
     unlock,

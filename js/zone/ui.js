@@ -454,7 +454,15 @@
         this.layerMenu.hidden = !this.layerMenu.hidden;
         this.layerToggle.classList.toggle("on", !this.layerMenu.hidden);
       });
+      this.root.addEventListener(
+        "pointerdown",
+        () => {
+          if (ZS.sound) ZS.sound.unlock();
+        },
+        true,
+      );
       this.root.addEventListener("click", (event) => {
+        if (event.target.closest("button:not(:disabled)") && ZS.sound) ZS.sound.event("ui_click");
         const system = event.target.closest("[data-system]"),
           action = event.target.closest("[data-main-action]"),
           layer = event.target.closest("[data-layer]"),

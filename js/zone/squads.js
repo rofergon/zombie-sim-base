@@ -486,6 +486,11 @@
       if (result !== "arrived" && leader.bld !== order.buildingId) return;
       if (order.kind === CFG.ORDER.RETURN_HQ || order.kind === CFG.ORDER.ENTER) {
         leader.zoneBuildingId = order.buildingId;
+        const building = this.map.at(order.buildingId),
+          door = building && building.shape && building.shape.door,
+          point = door && (door.front || door.inner);
+        if (ZS.sound && building)
+          ZS.sound.event("door_open", point ? point.x : building.cx, point ? point.y : building.cy);
         if (order.buildingId === this.map.hq.id && this._deposit(squad)) {
           this._syncOrderViews(squad);
           return;

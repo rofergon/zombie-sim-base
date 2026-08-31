@@ -241,6 +241,7 @@
         () => this._markUI(),
         (tech) => {
           this.ui.toast((TECH_NAME[tech] || "La tecnología") + " ha sido investigada.");
+          if (ZS.sound) ZS.sound.event("ui_confirm");
           this._markUI();
         },
       );
@@ -367,6 +368,55 @@
       if (alpha <= 0.001) return;
       c.fillStyle = "rgba(31,35,52," + alpha.toFixed(3) + ")";
       c.fillRect(0, 0, world.w, world.h);
+    }
+
+    soundscape(scene) {
+      if (!this.world || !this.nav || !this.map) return;
+      const phase = this.state.phase(),
+        radius = Math.min(680, Math.max(180, scene.viewRadius * 0.42)),
+        x = scene.x,
+        y = scene.y,
+        water =
+          this.nav.isWater(x, y) ||
+          this.nav.isWater(x - radius, y) ||
+          this.nav.isWater(x + radius, y) ||
+          this.nav.isWater(x, y - radius) ||
+          this.nav.isWater(x, y + radius),
+        forest = this.world.inForest(x, y);
+      scene.layer(
+        0,
+        "wind",
+        phase === "night" ? 0.58 : phase === "dusk" ? 0.46 : forest ? 0.24 : 0.32,
+      );
+      if (this.defense.data.active) scene.layer(1, "tension", 0.72);
+      else if (water) scene.layer(1, "water", 0.78);
+      else if (phase === "night") scene.layer(1, "crickets", forest ? 0.88 : 0.58);
+      else if (phase === "dusk") scene.layer(1, "crickets", forest ? 0.52 : 0.32);
+      else scene.layer(1, "birds", forest ? 0.72 : phase === "dawn" ? 0.44 : 0.26);
+
+      const records = this.map.records;
+      for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        if (record.demolished || record.hp <= 0 || !record.active) continue;
+        if (record.use === CFG.BUILDING_USE.POWER)
+          scene.emitter(100000 + record.id, "generator", record.cx, record.cy, 0.9, 520);
+        else if (record.use === CFG.BUILDING_USE.WORKSHOP && record.powered)
+          scene.emitter(100000 + record.id, "workshop", record.cx, record.cy, 0.76, 390);
+        else if (record.use === CFG.BUILDING_USE.RESEARCH && record.powered)
+          scene.emitter(100000 + record.id, "research", record.cx, record.cy, 0.62, 320);
+      }
+      const jobs = this.tasks.jobs;
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        if (
+          job.type !== CFG.JOB.BUILD ||
+          job.state !== CFG.JOB_STATE.ACTIVE ||
+          !job.assigned.length
+        )
+          continue;
+        const record = this.map.at(job.targetId);
+        if (record) scene.emitter(200000 + job.id, "construction", record.cx, record.cy, 0.72, 410);
+      }
     }
 
     drawPermanentGround(c, world) {
@@ -641,6 +691,7 @@
         const value = this.commandMode.slice(8);
         if (value === "remove") {
           const removed = this.fortifications.removeAt(x, y, true);
+          if (removed && ZS.sound) ZS.sound.event("work_tools", removed.x, removed.y);
           this.ui.toast(
             removed
               ? this.fortifications.label(removed.kind) +
@@ -650,6 +701,7 @@
         } else {
           const kind = Number(value),
             placed = this.fortifications.place(x, y, kind);
+          if (placed && ZS.sound) ZS.sound.event("work_build", placed.x, placed.y);
           this.ui.toast(
             placed
               ? this.fortifications.label(kind) + " colocada. Puedes seguir construyendo."
@@ -664,6 +716,7 @@
         const value = this.commandMode.slice(5);
         if (value === "remove") {
           const removed = this.agriculture.removeAt(x, y, true);
+          if (removed && ZS.sound) ZS.sound.event("work_tools", removed.x, removed.y);
           this.ui.toast(
             removed
               ? this.agriculture.label(removed.kind) + " retirado; se recuperó la mitad del coste."
@@ -672,6 +725,7 @@
         } else {
           const kind = Number(value),
             placed = this.agriculture.place(x, y, kind);
+          if (placed && ZS.sound) ZS.sound.event("work_tools", placed.x, placed.y);
           this.ui.toast(
             placed
               ? this.agriculture.label(kind) + " preparado. Puedes seguir trazando cultivos."
@@ -777,7 +831,9 @@
     }
 
     repairSelectedBuilding() {
-      const result = this.adaptations.repair(this.selectedBuilding);
+      const record = this.selectedBuilding,
+        result = this.adaptations.repair(record);
+      if (result && record && ZS.sound) ZS.sound.event("work_build", record.cx, record.cy);
       this.ui.toast(
         result
           ? "Reparaciones completadas."
@@ -871,6 +927,7 @@
       this._wirePopulation();
       this.state.save();
       this.centerHome();
+      if (ZS.sound) ZS.sound.event("ui_confirm");
       this.ui.toast("Base establecida. Los trabajadores y la primera escuadra están listos.");
       this._refreshClock(true);
       this._markUI();
@@ -1164,6 +1221,7 @@
       this.orderPing.y = (bounds.y0 + bounds.y1) / 2;
       this.orderPing.until = performance.now() + 520;
       this.orderPing.seed++;
+      if (ZS.sound) ZS.sound.event("order", this.orderPing.x, this.orderPing.y);
       this.ui.toast(
         "Área de " +
           this.gathering.label(resource) +
@@ -1409,6 +1467,7 @@
       this.orderPing.y = y;
       this.orderPing.until = performance.now() + 520;
       this.orderPing.seed++;
+      if (ZS.sound) ZS.sound.event("order", x, y);
       this.ui.toast(
         building
           ? building === this.map.hq ||
@@ -1447,6 +1506,7 @@
       this.orderPing.y = y;
       this.orderPing.until = performance.now() + 520;
       this.orderPing.seed++;
+      if (ZS.sound) ZS.sound.event("order", x, y);
       this.ui.toast(
         count === 1
           ? "Orden de ataque y avance emitida."
@@ -1467,6 +1527,7 @@
       for (let i = 0; i < squads.length; i++)
         if (this.squads.issueGarrison(squads[i], building, append)) count++;
       if (!count) return false;
+      if (ZS.sound) ZS.sound.event("order", building.cx, building.cy);
       this.ui.toast(
         count === 1
           ? "La patrulla guarnecerá " + (building === this.map.hq ? "el CG." : building.name + ".")
@@ -1496,6 +1557,7 @@
       this.orderPing.y = (bounds.y0 + bounds.y1) / 2;
       this.orderPing.until = performance.now() + 520;
       this.orderPing.seed++;
+      if (ZS.sound) ZS.sound.event("order", this.orderPing.x, this.orderPing.y);
       this.ui.toast(
         result.assigned +
           " edificio" +

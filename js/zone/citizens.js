@@ -154,6 +154,7 @@
       agent.formationTarget = { x: agent.x, y: agent.y };
       agent.workTarget = { x: agent.x, y: agent.y };
       agent.workT = 0;
+      agent.workSoundT = 0;
       agent.attackT = 0;
       agent.name = raw.name || this._nameFor(raw.id);
       agent.arrivalDay = Math.max(1, raw.arrivalDay || 1);

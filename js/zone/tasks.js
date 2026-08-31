@@ -693,12 +693,14 @@
         worker.workerState = WS.WORKING;
         worker.zoneBuildingId = job.targetId;
         worker.workT = 0;
+        worker.workSoundT = ZS.hash(worker.cid * 97 + job.id * 31) * 0.4;
         worker.vx = worker.vy = 0;
       }
     }
 
     _work(worker, job, dt) {
       if (!job) return;
+      this._workSound(worker, job, dt);
       if (job.type === CFG.JOB.BUILD) {
         job.progress += dt;
         if (job.progress >= CFG.TASK.BUILD_SECONDS) this._complete(job);
@@ -757,6 +759,26 @@
       }
       worker.workerState = WS.RETURNING;
       if (this.onChanged) this.onChanged();
+    }
+
+    _workSound(worker, job, dt) {
+      if (!ZS.sound) return;
+      worker.workSoundT = (worker.workSoundT || 0) - dt;
+      if (worker.workSoundT > 0) return;
+      worker.workSoundT = 0.62 + ZS.hash(worker.cid * 193 + job.id * 71) * 0.78;
+      let event = null;
+      if (job.type === CFG.JOB.BUILD || job.type === CFG.JOB.REPAIR) event = "work_build";
+      else if (job.type === CFG.JOB.SALVAGE) event = "work_tools";
+      else if (job.type === CFG.JOB.GATHER)
+        event = job.resource === R.WOOD ? "work_wood" : "work_metal";
+      else if (job.type === CFG.JOB.PRODUCE) {
+        const target = this._target(job);
+        if (job.targetKind === "field" || (target && target.use === CFG.BUILDING_USE.FARM))
+          event = "work_tools";
+        else if (target && target.use === CFG.BUILDING_USE.WORKSHOP) event = "work_metal";
+        else if (target && target.use === CFG.BUILDING_USE.BARN) event = "work_wood";
+      }
+      if (event) ZS.sound.event(event, worker.x, worker.y);
     }
 
     _return(worker, job, dt, t, nav, night) {
