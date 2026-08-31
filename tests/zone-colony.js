@@ -15,7 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         zone: { hqId: 2, initialized: false, buildings: [] },
       }),
     );
-    assert.equal(migrated.v, 9);
+    assert.equal(migrated.v, 10);
     assert.equal(migrated.world.seed, 77);
     assert.equal(migrated.zone.tech.length, 5);
     assert.equal(migrated.zone.defense.active, false);
@@ -436,7 +436,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(await sim.page.evaluate(() => ZS.scenario.paused), false);
 
     assertNoErrors(sim.errors, "zone colony");
-    process.stdout.write("✓ v5 → v6 → v7 → v8 → v9 migration and adapted-building round-trip\n");
+    process.stdout.write("✓ v5 → v6 → v7 → v8 → v9 → v10 migration and adapted-building round-trip\n");
     process.stdout.write(
       "✓ construction reservation, research, power and staffed food production\n",
     );

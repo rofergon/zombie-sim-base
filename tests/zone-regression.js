@@ -14,7 +14,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     const migration = await sim.page.evaluate(() =>
       ZS.ZoneSave.migrate({ v: 1, seed: 91, day: 4, minute: 75, hq: 3 }),
     );
-    assert.equal(migration.v, 9);
+    assert.equal(migration.v, 10);
     assert.equal(migration.world.source, "procedural");
     assert.equal(migration.world.size, "classic");
     assert.equal(migration.world.seed, 91);

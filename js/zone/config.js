@@ -89,9 +89,13 @@
 
   const WEAPON = Object.freeze({ MACHETE: 1, PISTOL: 2, RIFLE: 3, COUNT: 4 });
 
+  const FACTION = Object.freeze({ FAROS: 0, COBALTO: 1, BASTION: 2, COUNT: 3 });
+  const LAW = Object.freeze({ NONE: 0, OPEN_DOORS: 1, RATIONS: 2, QUARANTINE: 3, COUNT: 4 });
+  const CURE_STAGE = Object.freeze({ DORMANT: 0, SIGNAL: 1, SAMPLE: 2, PROTOTYPE: 3, TRIAL: 4, FORMULA: 5 });
+
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 9,
+    SAVE_VERSION: 10,
     RESOURCE,
     JOB,
     ROLE,
@@ -105,6 +109,9 @@
     POI,
     WEAPON,
     TECH,
+    FACTION,
+    LAW,
+    CURE_STAGE,
     CLOCK: Object.freeze({
       START_DAY: 1,
       START_MINUTE: 7 * 60,
@@ -220,6 +227,17 @@
     }),
     RESEARCH: Object.freeze({
       COSTS: Object.freeze([0, 8, 10, 12, 8]),
+    }),
+    CAMPAIGN: Object.freeze({
+      MAX_HISTORY: 24,
+      CURE_COSTS: Object.freeze({
+        2: Object.freeze([0, 0, 0, 0, 0, 3, 8]),
+        3: Object.freeze([0, 0, 0, 0, 0, 6, 12]),
+        4: Object.freeze([0, 0, 0, 0, 0, 8, 16]),
+        5: Object.freeze([0, 0, 0, 0, 0, 12, 20]),
+      }),
+      FINAL_HORDE_MULTIPLIER: 1.7,
+      COALITION_HORDE_MULTIPLIER: 1.35,
     }),
     DEFENSE: Object.freeze({
       GRID: 40,

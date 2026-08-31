@@ -1399,6 +1399,260 @@ body {
   font-size: 9px;
 }
 
+.zone-campaign-heading,
+.zone-cure-card header,
+.zone-factions > header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.zone-campaign-heading {
+  padding: 8px 10px;
+  border: 1px solid rgba(61, 52, 43, 0.28);
+  background: rgba(112, 148, 72, 0.08);
+  transform: rotate(-0.25deg);
+}
+
+.zone-campaign-heading .zone-icon,
+.zone-cure-card header .zone-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.zone-campaign-heading span,
+.zone-cure-card header span {
+  display: grid;
+}
+
+.zone-campaign-heading small,
+.zone-cure-card small,
+.zone-factions header small,
+.zone-campaign-log header small {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  opacity: 0.58;
+}
+
+.zone-campaign-heading b,
+.zone-cure-card header b {
+  font: 700 14px var(--zone-script);
+}
+
+.zone-campaign-event {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid rgba(61, 52, 43, 0.38);
+  background:
+    linear-gradient(rgba(246, 241, 227, 0.92), rgba(246, 241, 227, 0.92)),
+    repeating-linear-gradient(0deg, transparent 0 21px, rgba(89, 112, 139, 0.12) 22px);
+  box-shadow: 2px 3px 0 rgba(61, 52, 43, 0.08);
+  transform: rotate(0.18deg);
+}
+
+.zone-campaign-event header small {
+  color: #6d3c2e;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.zone-campaign-event h3,
+.zone-factions h3 {
+  margin: 3px 0 8px;
+  font: 700 16px var(--zone-script);
+}
+
+.zone-campaign-event p,
+.zone-cure-card p,
+.zone-campaign-log p {
+  margin: 7px 0;
+  font: 10px/1.48 var(--zone-ui);
+}
+
+.zone-campaign-choices,
+.zone-law-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+#zone-ui .zone-campaign-choices button,
+#zone-ui .zone-law-list button,
+#zone-ui .zone-cure-card button,
+#zone-ui .zone-factions article button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid rgba(79, 105, 55, 0.42);
+  background: rgba(112, 148, 72, 0.08);
+  text-align: left;
+}
+
+#zone-ui .zone-campaign-choices button:hover:not(:disabled),
+#zone-ui .zone-law-list button:hover:not(:disabled),
+#zone-ui .zone-cure-card button:hover:not(:disabled),
+#zone-ui .zone-factions article button:hover:not(:disabled) {
+  background: rgba(112, 148, 72, 0.18);
+}
+
+.zone-campaign-choices b,
+.zone-law-list b,
+.zone-cure-card button b,
+.zone-factions article button b {
+  font-size: 10px;
+}
+
+.zone-campaign-choices small,
+.zone-law-list small,
+.zone-cure-card button small,
+.zone-factions article button small {
+  font-size: 8px;
+  line-height: 1.35;
+  opacity: 0.65;
+}
+
+.zone-cure-card,
+.zone-factions,
+.zone-campaign-log {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(61, 52, 43, 0.22);
+  background: rgba(246, 241, 227, 0.58);
+}
+
+.zone-cure-progress,
+.zone-standing {
+  height: 5px;
+  margin: 8px 0;
+  overflow: hidden;
+  border: 1px solid rgba(61, 52, 43, 0.28);
+  background: rgba(61, 52, 43, 0.08);
+}
+
+.zone-cure-progress i,
+.zone-standing i {
+  display: block;
+  height: 100%;
+  background: #718b55;
+}
+
+.zone-cure-card > strong {
+  display: block;
+  color: #526a3d;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.zone-cure-card button {
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+}
+
+.zone-cure-card button .zone-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.zone-cure-block {
+  display: block;
+  margin-top: 5px;
+  color: #6d3c2e;
+}
+
+.zone-factions {
+  display: grid;
+  gap: 7px;
+}
+
+.zone-factions > article {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-left: 3px solid rgba(79, 105, 55, 0.58);
+  background: rgba(112, 148, 72, 0.05);
+}
+
+.zone-factions > article.locked {
+  border-left-color: rgba(61, 52, 43, 0.18);
+  opacity: 0.5;
+}
+
+.zone-factions article > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.zone-factions article > div:first-child b {
+  font: 600 11px var(--zone-script);
+}
+
+.zone-factions article > div:first-child small,
+.zone-factions article > span {
+  font-size: 8px;
+  line-height: 1.35;
+  opacity: 0.66;
+}
+
+.zone-factions article button {
+  margin-top: 4px;
+}
+
+.zone-campaign-log article {
+  display: grid;
+  gap: 2px;
+  padding: 7px 0;
+  border-bottom: 1px dashed rgba(61, 52, 43, 0.24);
+}
+
+.zone-campaign-log article small {
+  font-size: 7px;
+  font-weight: 800;
+  opacity: 0.52;
+}
+
+.zone-campaign-log article b {
+  font-size: 9px;
+}
+
+.zone-campaign-log article p {
+  margin: 0;
+  font-size: 8px;
+  opacity: 0.72;
+}
+
+#zone-ui .zone-law-list button {
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+}
+
+#zone-ui .zone-law-list button.active {
+  border-color: rgba(79, 105, 55, 0.72);
+  background: rgba(112, 148, 72, 0.16);
+  opacity: 1;
+}
+
+.zone-law-list .zone-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.zone-law-list span:not(.zone-icon) {
+  display: grid;
+  gap: 2px;
+}
+
+.zone-law-list em {
+  color: #526a3d;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
 .zone-locked-system {
   display: grid;
   justify-items: center;

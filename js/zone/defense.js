@@ -82,10 +82,13 @@
           0,
         );
       this.spawnRemaining =
-        CFG.HORDE.BASE_COUNT +
-        this.state.day * CFG.HORDE.PER_DAY +
-        Math.floor(population / 20) +
-        Math.floor(adapted / 3);
+        Math.ceil(
+          (CFG.HORDE.BASE_COUNT +
+            this.state.day * CFG.HORDE.PER_DAY +
+            Math.floor(population / 20) +
+            Math.floor(adapted / 3)) *
+            (this.scenario.campaign ? this.scenario.campaign.nightMultiplier() : 1),
+        );
       this.data.pending = this.spawnRemaining;
       this.data.live = 0;
       this.spawnT = 0;
@@ -108,6 +111,7 @@
         );
       }
       if (ZS.sound) ZS.sound.event("horn", this.map.hq.cx, this.map.hq.cy);
+      if (this.scenario.campaign) this.scenario.campaign.onNightStarted();
       if (this.onChanged) this.onChanged();
       return true;
     }
@@ -379,6 +383,7 @@
         breached: this.data.breached,
       };
       this.data.report = report;
+      if (this.scenario.campaign) this.scenario.campaign.onNightEnded(cleared);
       if (cleared) {
         if (this.state.minute >= CFG.CLOCK.NIGHT) this.state.day++;
         this.state.minute = CFG.CLOCK.DAWN;
@@ -394,7 +399,9 @@
     dismissReport() {
       if (!this.data.report) return false;
       this.data.report = null;
-      this.scenario.paused = false;
+      this.scenario.paused = Boolean(
+        this.scenario.campaign && this.scenario.campaign.hasBlocking(),
+      );
       this.state.save();
       if (this.onChanged) this.onChanged();
       return true;

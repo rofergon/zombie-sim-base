@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v9. */
+   shapes are discarded at this storage boundary so gameplay only sees v10. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -34,6 +34,27 @@
       expedition: null,
       tech: Array.from({ length: CFG.TECH.COUNT }, () => false),
       defense: defaultDefense(),
+      campaign: defaultCampaign(),
+    };
+  }
+
+  function defaultCampaign() {
+    return {
+      act: 0,
+      pending: null,
+      completed: [],
+      history: [],
+      flags: [],
+      factions: Array.from({ length: CFG.FACTION.COUNT }, () => 0),
+      law: CFG.LAW.NONE,
+      lawChangedDay: 0,
+      cureStage: CFG.CURE_STAGE.DORMANT,
+      finalNight: 0,
+      endingPath: null,
+      ending: null,
+      endingUnread: false,
+      lastEventDay: 0,
+      lastTradeDay: Array.from({ length: CFG.FACTION.COUNT }, () => 0),
     };
   }
 
@@ -160,6 +181,12 @@
     };
   }
 
+  function migrateV9(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.campaign = defaultCampaign();
+    return { v: 10, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
@@ -201,6 +228,8 @@
       carry: resources(raw.carry),
       squadId: Number.isInteger(raw.squadId) ? raw.squadId : null,
       weapon: clamp(intOr(raw.weapon, CFG.WEAPON.MACHETE), CFG.WEAPON.MACHETE, CFG.WEAPON.RIFLE),
+      name: shortText(raw.name, null, 60),
+      arrivalDay: Math.max(1, intOr(raw.arrivalDay, 1)),
     };
   }
 
@@ -370,6 +399,58 @@
     };
   }
 
+  function shortText(value, fallback, max) {
+    return typeof value === "string" ? value.slice(0, max) : fallback;
+  }
+
+  function normalizeCampaign(raw) {
+    const clean = defaultCampaign();
+    if (!raw || typeof raw !== "object") return clean;
+    clean.act = clamp(intOr(raw.act, 0), 0, 3);
+    clean.pending = shortText(raw.pending, null, 48);
+    if (Array.isArray(raw.completed))
+      for (let i = 0; i < raw.completed.length && clean.completed.length < 64; i++) {
+        const id = shortText(raw.completed[i], null, 48);
+        if (id && !clean.completed.includes(id)) clean.completed.push(id);
+      }
+    if (Array.isArray(raw.flags))
+      for (let i = 0; i < raw.flags.length && clean.flags.length < 64; i++) {
+        const id = shortText(raw.flags[i], null, 48);
+        if (id && !clean.flags.includes(id)) clean.flags.push(id);
+      }
+    if (Array.isArray(raw.history))
+      for (let i = Math.max(0, raw.history.length - CFG.CAMPAIGN.MAX_HISTORY); i < raw.history.length; i++) {
+        const entry = raw.history[i];
+        if (!entry || typeof entry !== "object") continue;
+        clean.history.push({
+          id: shortText(entry.id, "registro", 48),
+          day: Math.max(1, intOr(entry.day, 1)),
+          title: shortText(entry.title, "Transmisión", 90),
+          choice: shortText(entry.choice, "Decisión registrada", 120),
+          outcome: shortText(entry.outcome, "", 260),
+        });
+      }
+    clean.factions = Array.from({ length: CFG.FACTION.COUNT }, (_, id) =>
+      clamp(intOr(raw.factions && raw.factions[id], 0), -100, 100),
+    );
+    clean.law = clamp(intOr(raw.law, CFG.LAW.NONE), CFG.LAW.NONE, CFG.LAW.QUARANTINE);
+    clean.lawChangedDay = Math.max(0, intOr(raw.lawChangedDay, 0));
+    clean.cureStage = clamp(
+      intOr(raw.cureStage, CFG.CURE_STAGE.DORMANT),
+      CFG.CURE_STAGE.DORMANT,
+      CFG.CURE_STAGE.FORMULA,
+    );
+    clean.finalNight = clamp(intOr(raw.finalNight, 0), 0, 3);
+    clean.endingPath = shortText(raw.endingPath, null, 24);
+    clean.ending = shortText(raw.ending, null, 24);
+    clean.endingUnread = Boolean(raw.endingUnread && clean.ending);
+    clean.lastEventDay = Math.max(0, intOr(raw.lastEventDay, 0));
+    clean.lastTradeDay = Array.from({ length: CFG.FACTION.COUNT }, (_, id) =>
+      Math.max(0, intOr(raw.lastTradeDay && raw.lastTradeDay[id], 0)),
+    );
+    return clean;
+  }
+
   function normalize(data) {
     const clean = defaultData();
     if (!data || data.v !== CFG.SAVE_VERSION) return clean;
@@ -412,6 +493,7 @@
       Boolean(source.tech && source.tech[id]),
     );
     zone.defense = normalizeDefense(source.defense);
+    zone.campaign = normalizeCampaign(source.campaign);
     const citizenIds = [],
       jobIds = [],
       squadIds = [],
@@ -506,6 +588,7 @@
       if (data.v === 6) data = migrateV6(data);
       if (data.v === 7) data = migrateV7(data);
       if (data.v === 8) data = migrateV8(data);
+      if (data.v === 9) data = migrateV9(data);
       return normalize(data);
     }
 
@@ -531,6 +614,10 @@
 
     static migrateV8(data) {
       return migrateV8(data);
+    }
+
+    static migrateV9(data) {
+      return migrateV9(data);
     }
 
     static normalize(data) {

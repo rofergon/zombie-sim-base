@@ -397,7 +397,11 @@
           defenseBuild = event.target.closest("[data-defense-build]"),
           defenseRemove = event.target.closest("[data-defense-remove]"),
           expedition = event.target.closest("[data-expedition-region]"),
-          exportMap = event.target.closest("[data-export-map]");
+          exportMap = event.target.closest("[data-export-map]"),
+          campaignChoice = event.target.closest("[data-campaign-choice]"),
+          campaignResearch = event.target.closest("[data-campaign-research]"),
+          campaignTrade = event.target.closest("[data-campaign-trade]"),
+          campaignLaw = event.target.closest("[data-campaign-law]");
         if (system && this.callbacks) this.callbacks.openSystem(system.dataset.system);
         else if (action && this.callbacks) {
           if (action.dataset.mainAction === "scavenge") this.callbacks.armArea();
@@ -418,6 +422,16 @@
         else if (expedition && this.callbacks)
           this.callbacks.expedition(expedition.dataset.expeditionRegion);
         else if (exportMap && this.callbacks) this.callbacks.exportMap();
+        else if (campaignChoice && this.callbacks)
+          this.callbacks.campaignChoice(
+            campaignChoice.dataset.campaignEvent,
+            campaignChoice.dataset.campaignChoice,
+          );
+        else if (campaignResearch && this.callbacks) this.callbacks.campaignResearch();
+        else if (campaignTrade && this.callbacks)
+          this.callbacks.campaignTrade(Number(campaignTrade.dataset.campaignTrade));
+        else if (campaignLaw && this.callbacks)
+          this.callbacks.campaignLaw(Number(campaignLaw.dataset.campaignLaw));
       });
     }
 
@@ -523,9 +537,16 @@
         this.objective.textContent = "Despeja un edificio y adáptalo para el asentamiento.";
       else if (!progress.survived)
         this.objective.textContent = "Trae las escuadras antes de la noche y defiende la base.";
+      else if (progress.campaignPending)
+        this.objective.textContent = "La radio espera una decisión. Abre la transmisión pendiente.";
+      else if (!progress.campaignEnding && progress.cureStage < CFG.CURE_STAGE.FORMULA)
+        this.objective.textContent =
+          "Proyecto Aurora: desarrolla la cura y mantén unida a la red de supervivientes.";
+      else if (!progress.campaignEnding)
+        this.objective.textContent = "La fórmula está lista. Decide qué futuro tendrá La Zona.";
       else
         this.objective.textContent =
-          "El distrito está estable. Expándete, investiga y prepárate para noches más duras.";
+          "La campaña ha terminado, pero La Zona puede seguir creciendo indefinidamente.";
     }
 
     refreshAlerts(alerts, enabled) {
@@ -537,6 +558,7 @@
         power: "zi-power",
         production: "zi-production",
         threat: "zi-threat",
+        radio: "zi-radio",
       };
       for (let i = 0; i < alerts.length; i++) {
         const alert = alerts[i];
@@ -604,6 +626,8 @@
             citizen.jobId,
             citizen.squadId,
             citizen.weapon,
+            citizen.name,
+            citizen.arrivalDay,
           ]),
         ];
       else if (name === "research") signatureData = [name, model.stock[R.SCIENCE], model.tech];
@@ -628,6 +652,7 @@
         ];
       else if (name === "expedition")
         signatureData = [name, model.regions, model.stock[R.FOOD], model.stock[R.AMMO]];
+      else if (name === "radio" || name === "laws") signatureData = [name, model.campaign];
       const signature = JSON.stringify(signatureData);
       if (signature === this.systemSignature) return;
       this.systemSignature = signature;
@@ -637,6 +662,8 @@
       else if (name === "economy") this._renderEconomySystem(model);
       else if (name === "defense") this._renderDefenseSystem(model);
       else if (name === "expedition") this._renderExpeditionSystem(model);
+      else if (name === "radio") this._renderRadioSystem(model);
+      else if (name === "laws") this._renderLawsSystem(model);
       else this._renderLockedSystem(name);
     }
 
@@ -721,12 +748,14 @@
         html +=
           '<button type="button" data-focus-citizen="' +
           citizen.id +
-          '"><span class="zone-icon zi-worker"></span><span><b>Habitante ' +
-          citizen.id +
+          '"><span class="zone-icon zi-worker"></span><span><b>' +
+          (citizen.name || "Habitante " + citizen.id) +
           "</b><small>" +
           role +
           " · " +
           state +
+          " · llegó día " +
+          citizen.arrivalDay +
           '</small></span><span class="zone-citizen-vitals"><i><em style="width:' +
           Math.max(0, Math.min(100, (citizen.hp / citizen.maxHP) * 100)) +
           '%"></em></i><small>HP ' +
@@ -910,6 +939,136 @@
           ? '<button type="button" class="zone-export-map" data-export-map>Exportar MapPack para uso offline</button>'
           : "");
       this.systemBody.innerHTML = html;
+    }
+
+    _renderRadioSystem(model) {
+      const campaign = model.campaign,
+        cure = campaign.cure;
+      let html =
+        '<div class="zone-campaign-heading"><span class="zone-icon zi-radio"></span><span><small>' +
+        campaign.actLabel +
+        '</small><b>PROYECTO AURORA</b></span></div>';
+      if (campaign.pending) {
+        const event = campaign.pending;
+        html +=
+          '<article class="zone-campaign-event"><header><small>' +
+          event.from +
+          "</small><h3>" +
+          event.title +
+          "</h3></header>";
+        for (let i = 0; i < event.body.length; i++) html += "<p>" + event.body[i] + "</p>";
+        html += '<div class="zone-campaign-choices">';
+        for (let i = 0; i < event.choices.length; i++) {
+          const choice = event.choices[i];
+          html +=
+            '<button type="button" data-campaign-event="' +
+            event.id +
+            '" data-campaign-choice="' +
+            choice.id +
+            '" ' +
+            (choice.available ? "" : "disabled") +
+            "><b>" +
+            choice.label +
+            "</b><small>" +
+            (choice.available ? choice.detail : choice.reason) +
+            "</small></button>";
+        }
+        html += "</div></article>";
+      }
+      html +=
+        '<section class="zone-cure-card"><header><span class="zone-icon zi-medicine"></span><span><small>ETAPA ' +
+        cure.stage +
+        " / " +
+        CFG.CURE_STAGE.FORMULA +
+        "</small><b>" +
+        cure.label +
+        '</b></span></header><div class="zone-cure-progress"><i style="width:' +
+        cure.progress +
+        '%"></i></div><p>' +
+        cure.detail +
+        "</p>";
+      if (!cure.complete) {
+        html +=
+          '<button type="button" data-campaign-research ' +
+          (cure.canAdvance ? "" : "disabled") +
+          '><span class="zone-icon zi-research"></span><span><b>Completar siguiente etapa</b><small>' +
+          (cure.cost
+            ? cure.cost[R.SCIENCE] + " ciencia · " + cure.cost[R.MEDICINE] + " medicina"
+            : cure.blockReason) +
+          "</small></span></button>";
+        if (!cure.canAdvance) html += '<small class="zone-cure-block">' + cure.blockReason + "</small>";
+      } else html += "<strong>FÓRMULA COMPLETA</strong>";
+      html +=
+        '</section><section class="zone-factions"><header><small>MUNDO HUMANO</small><h3>Redes en contacto</h3></header>';
+      for (let i = 0; i < campaign.factions.length; i++) {
+        const faction = campaign.factions[i];
+        html += '<article class="' + (faction.unlocked ? "" : "locked") + '"><div><b>';
+        html += faction.unlocked ? faction.name : "Frecuencia desconocida";
+        html +=
+          "</b><small>" +
+          (faction.unlocked ? faction.description : "Aún no has establecido contacto.") +
+          '</small></div><div class="zone-standing"><i style="width:' +
+          (faction.standing + 100) / 2 +
+          '%"></i></div><span>' +
+          (faction.unlocked ? faction.status + " · " + faction.standing : "sin señal") +
+          "</span>";
+        if (faction.unlocked)
+          html +=
+            '<button type="button" data-campaign-trade="' +
+            faction.id +
+            '" ' +
+            (faction.canTrade ? "" : "disabled") +
+            "><b>Intercambiar</b><small>" +
+            faction.trade +
+            " · una vez por día</small></button>";
+        html += "</article>";
+      }
+      html +=
+        '</section><section class="zone-campaign-log"><header><small>DIARIO DE LA ZONA</small></header>';
+      if (!campaign.history.length) html += "<p>Aún no hay decisiones registradas.</p>";
+      for (let i = 0; i < campaign.history.length; i++) {
+        const entry = campaign.history[i];
+        html +=
+          "<article><small>DÍA " +
+          entry.day +
+          " · " +
+          entry.title +
+          "</small><b>" +
+          entry.choice +
+          "</b><p>" +
+          entry.outcome +
+          "</p></article>";
+      }
+      this.systemBody.innerHTML = html + "</section>";
+    }
+
+    _renderLawsSystem(model) {
+      const laws = model.campaign.laws;
+      if (!laws.unlocked) {
+        this._renderLockedSystem("laws");
+        return;
+      }
+      let html =
+        '<p class="zone-system-lead">La asamblea puede cambiar una directiva por día. Cada política altera la vida diaria y las consecuencias de los rescates.</p><div class="zone-law-list">';
+      for (let i = 0; i < laws.choices.length; i++) {
+        const law = laws.choices[i],
+          active = law.id === laws.current;
+        html +=
+          '<button type="button" data-campaign-law="' +
+          law.id +
+          '" class="' +
+          (active ? "active" : "") +
+          '" ' +
+          (active || !laws.canChange ? "disabled" : "") +
+          '><span class="zone-icon zi-laws"></span><span><b>' +
+          law.name +
+          "</b><small>" +
+          law.detail +
+          "</small><em>" +
+          (active ? "EN VIGOR" : laws.canChange ? "promulgar" : "asamblea cerrada hasta mañana") +
+          "</em></span></button>";
+      }
+      this.systemBody.innerHTML = html + "</div>";
     }
 
     _renderLockedSystem(name) {

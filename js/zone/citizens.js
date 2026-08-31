@@ -5,6 +5,50 @@
   const ZS = (window.ZS = window.ZS || {});
   const CFG = ZS.ZoneConfig;
   const R = CFG.RESOURCE;
+  const FIRST_NAMES = Object.freeze([
+    "Adriana",
+    "Amalia",
+    "Bruno",
+    "Camilo",
+    "Celia",
+    "Damián",
+    "Elena",
+    "Eva",
+    "Fabián",
+    "Gabriel",
+    "Inés",
+    "Irene",
+    "Jairo",
+    "Julia",
+    "Lina",
+    "Lucía",
+    "Mateo",
+    "Nadia",
+    "Noé",
+    "Omar",
+    "Pilar",
+    "Rafael",
+    "Sara",
+    "Tomás",
+    "Vera",
+    "Yago",
+  ]);
+  const LAST_NAMES = Object.freeze([
+    "Acosta",
+    "Becerra",
+    "Cano",
+    "Duarte",
+    "Ferrer",
+    "Galán",
+    "Ibarra",
+    "León",
+    "Mora",
+    "Nieves",
+    "Pardo",
+    "Ríos",
+    "Soler",
+    "Vega",
+  ]);
 
   function emptyResources() {
     return Array.from({ length: R.COUNT }, () => 0);
@@ -21,6 +65,8 @@
       this.onChanged = null;
       this.needStamp = 0;
       this.adaptations = null;
+      this.campaign = null;
+      this.makeAgent = null;
     }
 
     connect(tasks, squads, onChanged) {
@@ -33,8 +79,13 @@
       this.adaptations = adaptations;
     }
 
+    connectCampaign(campaign) {
+      this.campaign = campaign;
+    }
+
     initialize(agents, makeAgent) {
       this.agents = agents;
+      this.makeAgent = makeAgent;
       this.byId.length = 0;
       const saved = this.state.zone.citizens;
       if (this.state.zone.initialized) {
@@ -104,6 +155,66 @@
       agent.workTarget = { x: agent.x, y: agent.y };
       agent.workT = 0;
       agent.attackT = 0;
+      agent.name = raw.name || this._nameFor(raw.id);
+      agent.arrivalDay = Math.max(1, raw.arrivalDay || 1);
+    }
+
+    _nameFor(id) {
+      const seed = (this.state.seed || 1) + id * 977,
+        first = FIRST_NAMES[(ZS.hash(seed) * FIRST_NAMES.length) | 0],
+        last = LAST_NAMES[(ZS.hash(seed + 431) * LAST_NAMES.length) | 0];
+      return first + " " + last;
+    }
+
+    recruit(count, options) {
+      if (!this.map.hq || !this.makeAgent || !this.agents) return [];
+      const added = [],
+        total = Math.max(0, Math.min(12, count | 0)),
+        opts = options || {},
+        door = this.map.hq.shape.door,
+        origin = door ? door.front : this.map.hq;
+      for (let i = 0; i < total; i++) {
+        const angle = (i / Math.max(1, total)) * Math.PI * 2,
+          radius = 28 + (i % 3) * 11,
+          x = (origin.x === undefined ? origin.cx : origin.x) + Math.cos(angle) * radius,
+          y = (origin.y === undefined ? origin.cy : origin.y) + Math.sin(angle) * radius,
+          point = this.map.nav.nearestWalkable(x, y, 140, false),
+          agent = this.makeAgent(point ? point.x : x, point ? point.y : y, 0),
+          id = this.state.zone.nextCitizenId++;
+        this._apply(agent, {
+          id,
+          x: agent.x,
+          y: agent.y,
+          hp: CFG.CITIZEN.MAX_HP,
+          maxHP: CFG.CITIZEN.MAX_HP,
+          moral: Math.max(0, Math.min(100, opts.moral || CFG.CITIZEN.START_MORAL)),
+          hunger: Math.max(0, opts.hunger || 0),
+          role: CFG.ROLE.WORKER,
+          workerState: CFG.WORKER_STATE.IDLE,
+          jobId: null,
+          carry: emptyResources(),
+          squadId: null,
+          weapon: CFG.WEAPON.MACHETE,
+          name: null,
+          arrivalDay: this.state.day,
+        });
+        this.agents.push(agent);
+        this.byId[id] = agent;
+        added.push(agent);
+      }
+      this.capture();
+      if (this.tasks) this.tasks.markDirty();
+      if (this.onChanged) this.onChanged();
+      return added;
+    }
+
+    adjustMorale(amount) {
+      for (let i = 0; i < this.byId.length; i++) {
+        const agent = this.byId[i];
+        if (!agent || agent.dead) continue;
+        agent.moral = Math.max(0, Math.min(100, agent.moral + amount));
+      }
+      if (this.onChanged) this.onChanged();
     }
 
     updateNeeds(agent, dt) {
@@ -111,7 +222,9 @@
       agent.hunger = Math.min(100, agent.hunger + dt * CFG.CITIZEN.HUNGER_PER_SECOND);
       if (agent.hunger >= CFG.CITIZEN.FOOD_AT_HUNGER && this.state.stock[R.FOOD] > 0) {
         this.state.stock[R.FOOD]--;
-        const multiplier = this.adaptations ? this.adaptations.foodReliefMultiplier() : 1;
+        const multiplier =
+          (this.adaptations ? this.adaptations.foodReliefMultiplier() : 1) *
+          (this.campaign ? this.campaign.foodReliefMultiplier() : 1);
         agent.hunger = Math.max(0, agent.hunger - CFG.CITIZEN.FOOD_RELIEF * multiplier);
       } else if (agent.hunger >= CFG.CITIZEN.FOOD_AT_HUNGER) {
         agent.moral = Math.max(0, agent.moral - dt * CFG.CITIZEN.STARVE_MORAL_PER_SECOND);
@@ -124,6 +237,7 @@
         agent.moral = Math.min(100, agent.moral + dt * CFG.CITIZEN.REST_MORAL_PER_SECOND);
       if (this.adaptations && this.state.phase() === "night" && this.adaptations.overcrowded)
         agent.moral = Math.max(0, agent.moral - dt * 0.025);
+      if (this.campaign) this.campaign.updateCitizen(agent, dt);
     }
 
     kill(agent) {
@@ -194,6 +308,8 @@
           carry: a.carry.slice(),
           squadId: a.squadId,
           weapon: a.weapon,
+          name: a.name,
+          arrivalDay: a.arrivalDay,
         });
       }
       this.state.zone.citizens = out;

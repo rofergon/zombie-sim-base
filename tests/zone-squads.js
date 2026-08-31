@@ -279,15 +279,28 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       }
       squad.inventory[ZS.ZoneConfig.RESOURCE.AMMO] = 0;
       scenario.squads.issueContext(squad, target.cx, target.cy, false, target);
+      const markerCanvas = document.createElement("canvas"),
+        markerContext = markerCanvas.getContext("2d"),
+        originalCircle = ZS.wcirc;
+      let marker = null;
+      ZS.wcirc = function (context, x, y, radius, ...args) {
+        if (radius === 8) marker = { x, y };
+        return originalCircle.call(this, context, x, y, radius, ...args);
+      };
+      scenario.drawOverlay(markerContext);
+      ZS.wcirc = originalCircle;
       return {
         id: target.id,
         expected: target.infectedRemaining,
         abstract: ZS.Sim.agents.filter((agent) => agent.zoneEnemy).length,
         squadId: squad.id,
+        marker,
+        center: { x: target.cx, y: target.cy },
       };
     });
     assert.equal(encounter.abstract, 0);
     assert.ok(encounter.expected > 0);
+    assert.deepEqual(encounter.marker, encounter.center, "building order marker must be centered");
     for (let i = 0; i < 80; i++) {
       await sim.page.evaluate(() => ZS.recording.advance(0.5));
       if (await sim.page.evaluate((id) => ZS.scenario.map.at(id).revealed, encounter.id)) break;

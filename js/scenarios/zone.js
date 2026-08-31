@@ -23,6 +23,7 @@
       this.fortifications = new ZS.ZoneFortifications(this.state, this.map);
       this.defense = new ZS.ZoneDefense(this.state, this.map, this.fortifications);
       this.regions = new ZS.ZoneRegions(this.state, this.map);
+      this.campaign = new ZS.ZoneCampaign(this.state, this.map);
       this.ui = new ZS.ZoneUI(document.getElementById("zone-ui"));
       this.usesTimeScale = true;
       this.timeScale = 0;
@@ -77,7 +78,9 @@
         legend() {},
         overlay: () => {
           const card = this.defense.reportCard();
-          return card ? { card } : null;
+          if (card) return { card };
+          const ending = this.campaign.endingCard();
+          return ending ? { card: ending } : null;
         },
       };
       this.ui.connect({
@@ -113,6 +116,10 @@
         focusCitizen: (id) => this.focusCitizen(id),
         expedition: (id) => this.startExpedition(id),
         exportMap: () => this.geo.exportPack(),
+        campaignChoice: (eventId, choiceId) => this.resolveCampaignChoice(eventId, choiceId),
+        campaignResearch: () => this.advanceCampaignCure(),
+        campaignTrade: (factionId) => this.campaignTrade(factionId),
+        campaignLaw: (lawId) => this.campaignLaw(lawId),
       });
       this.state.capture = () => this._capture();
       window.addEventListener("keydown", (event) => {
@@ -207,6 +214,15 @@
       });
       this.fortifications.connect(this, this.agents, () => this._markUI());
       this.regions.connect(() => this._markUI());
+      this.citizens.connectCampaign(this.campaign);
+      this.campaign.connect(
+        this.citizens,
+        this.adaptations,
+        this.defense,
+        this.regions,
+        this,
+        () => this._markUI(),
+      );
       this.tasks.reconcile();
       this._markUI();
       this._refreshSettlement();
@@ -220,6 +236,7 @@
       this.defense.update(dt, performance.now() / 1000, this.nav);
       this.fortifications.update(dt);
       this.regions.update(dt);
+      this.campaign.update(dt);
       this.saveT += dt;
       if (this.saveT >= 10) {
         this.saveT = 0;
@@ -407,22 +424,25 @@
         let scavengeStep = 0;
         const first = squad.patrolLoop ? 0 : squad.orderIndex;
         for (let j = first; j < squad.orders.length; j++) {
-          const order = squad.orders[j];
+          const order = squad.orders[j],
+            building = Number.isInteger(order.buildingId) ? this.map.at(order.buildingId) : null,
+            markerX = building ? building.cx : order.x,
+            markerY = building ? building.cy : order.y;
           if (order.kind === CFG.ORDER.SCAVENGE) {
             scavengeStep++;
             c.fillStyle = "rgba(246,241,227,0.88)";
             c.strokeStyle = "rgba(79,105,55,0.75)";
-            ZS.wcirc(c, order.x, order.y, 8, agent.seed + j * 17 + 503, 0.8);
+            ZS.wcirc(c, markerX, markerY, 8, agent.seed + j * 17 + 503, 0.8);
             c.fill();
             c.fillStyle = "rgba(61,52,43,0.9)";
             c.font = 'bold 9px "Segoe Script", "Bradley Hand", cursive';
             c.textAlign = "center";
             c.textBaseline = "middle";
-            c.fillText(String(scavengeStep), order.x, order.y + 0.5);
+            c.fillText(String(scavengeStep), markerX, markerY + 0.5);
           } else {
             c.fillStyle = "rgba(246,241,227,0.88)";
             c.strokeStyle = "rgba(79,105,55,0.82)";
-            ZS.wcirc(c, order.x, order.y, 4.5, agent.seed + j * 17 + 503, 0.7);
+            ZS.wcirc(c, markerX, markerY, 4.5, agent.seed + j * 17 + 503, 0.7);
             c.fill();
           }
         }
@@ -527,6 +547,10 @@
     pointerDown(x, y, event) {
       if (this.defense.data.report) {
         this.defense.dismissReport();
+        return true;
+      }
+      if (this.campaign.data.endingUnread) {
+        this.campaign.dismissEnding();
         return true;
       }
       if (this.spacePan || event.button === 1) return false;
@@ -665,6 +689,46 @@
         result
           ? "Investigación completada."
           : "Se necesita un centro de investigación o materiales de ciencia.",
+      );
+      this._markUI();
+      return result;
+    }
+
+    resolveCampaignChoice(eventId, choiceId) {
+      const result = this.campaign.choose(eventId, choiceId);
+      this.ui.toast(result ? "La decisión queda registrada en el diario de la Zona." : "Esa opción no está disponible.");
+      this._markUI();
+      return result;
+    }
+
+    advanceCampaignCure() {
+      const result = this.campaign.advanceCure();
+      this.ui.toast(
+        result
+          ? "Proyecto Aurora avanza a una nueva etapa."
+          : this.campaign.cureBlockReason(),
+      );
+      this._markUI();
+      return result;
+    }
+
+    campaignTrade(factionId) {
+      const result = this.campaign.trade(factionId);
+      this.ui.toast(
+        result
+          ? "Intercambio completado. La ruta volverá a estar disponible mañana."
+          : "El intercambio no está disponible o faltan recursos.",
+      );
+      this._markUI();
+      return result;
+    }
+
+    campaignLaw(lawId) {
+      const result = this.campaign.setLaw(lawId);
+      this.ui.toast(
+        result
+          ? "La nueva directiva entra en vigor."
+          : "Solo puedes cambiar de directiva una vez por día.",
       );
       this._markUI();
       return result;
@@ -863,6 +927,11 @@
       }
       if (alert.target === "squad") return this.focusSquad(alert.id);
       if (alert.target === "citizen") return this.focusCitizen(alert.id);
+      if (alert.target === "campaign") {
+        this.systemPanel = "radio";
+        this.ui.setSystemPanel(this.systemPanel, this._systemModel());
+        return true;
+      }
       return false;
     }
 
@@ -1481,6 +1550,9 @@
         scouted,
         adapted,
         survived: this.state.day > 1,
+        campaignPending: Boolean(this.campaign.data.pending),
+        cureStage: this.campaign.data.cureStage,
+        campaignEnding: this.campaign.data.ending,
       };
     }
 
@@ -1597,6 +1669,14 @@
           target: "home",
           id: null,
         });
+      if (this.campaign.data.pending)
+        alerts.unshift({
+          kind: "radio",
+          title: "Transmisión pendiente",
+          detail: "La campaña espera una decisión",
+          target: "campaign",
+          id: null,
+        });
       return alerts.slice(0, 5);
     }
 
@@ -1618,6 +1698,8 @@
           jobId: citizen.jobId,
           squadId: citizen.squadId,
           weapon: citizen.weapon,
+          name: citizen.name,
+          arrivalDay: citizen.arrivalDay,
         });
       }
       for (let use = CFG.BUILDING_USE.SHELTER; use <= CFG.BUILDING_USE.POWER; use++)
@@ -1642,6 +1724,7 @@
         defense: this.defense.status(),
         regions: this.regions.model(this.squads.list.length),
         mapPackAvailable: Boolean(this.geo.pack),
+        campaign: this.campaign.model(),
         selectedBuilding: this.selectedBuilding,
         selectedCanAdapt: Boolean(
           this.selectedBuilding &&
