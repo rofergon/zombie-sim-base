@@ -23,7 +23,9 @@ cuatro experiencias se pueden abrir directamente desde el sistema de archivos.
 ## Cómo ejecutarlo
 
 No hay que instalar nada para jugar. Clona o descarga el repositorio y abre
-cualquiera de los cuatro archivos HTML con un navegador moderno.
+`index.html` con un navegador moderno: el menú principal permite escoger entre
+los cuatro modos y configurar sonido, volumen, cámara y pantalla. Cada modo
+también conserva su propio archivo HTML para abrirlo directamente.
 
 También puedes servir la carpeta localmente, opción recomendada para usar la
 selección de mapas reales de La Zona:
@@ -127,6 +129,7 @@ Comandos disponibles:
 npm run format             # formatea js/ y tests/ con oxfmt
 npm run lint               # analiza js/ y tests/ con oxlint
 npm test                   # ejecuta toda la suite de Playwright
+npm run test:menu          # valida el menú, ajustes y persistencia
 npm run test:smoke         # abre y valida las cuatro páginas
 npm run test:zone          # regresión base y migraciones de La Zona
 npm run test:zone-workers  # ciudadanos, tareas y conservación de recursos

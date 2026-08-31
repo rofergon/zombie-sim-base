@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>El brote — un simulador dibujado</title>
+<link rel="stylesheet" href="css/menu.css">
 <style>
   html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#efe8d8;}
   #c{display:block;touch-action:none;-webkit-user-select:none;user-select:none;}
@@ -11,7 +12,71 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<button id="zs-menu-button" class="zs-menu-link" type="button" hidden>☰ Menú</button>
+<main id="main-menu" aria-label="Menú principal">
+  <canvas class="zs-menu-art" aria-hidden="true"></canvas>
+  <section class="zs-menu-sheet" aria-labelledby="zs-menu-title">
+    <header class="zs-menu-head">
+      <div>
+        <p class="zs-menu-kicker">Cuatro historias sobre papel</p>
+        <h1 id="zs-menu-title">El brote</h1>
+      </div>
+      <p>Escoge una forma de sobrevivir, dirigir o simplemente observar cómo todo se viene abajo.</p>
+    </header>
+    <nav class="zs-mode-grid" aria-label="Modos de juego">
+      <button class="zs-mode-card" type="button" data-play-outbreak>
+        <span class="zs-mode-number">01</span>
+        <span class="zs-mode-kind">Simulación</span>
+        <span class="zs-mode-mark" aria-hidden="true"></span>
+        <h2>El brote</h2>
+        <p>Un pueblo, una horda y defensores que improvisan mientras la infección se extiende.</p>
+        <span class="zs-mode-action"><b>Comenzar</b><small>acción automática</small></span>
+      </button>
+      <a class="zs-mode-card" href="battle.html">
+        <span class="zs-mode-number">02</span>
+        <span class="zs-mode-kind">Batalla histórica</span>
+        <span class="zs-mode-mark" aria-hidden="true"></span>
+        <h2>Canas</h2>
+        <p>Observa a 781 figuras recrear el cerco de Aníbal y reagrupa las líneas aliadas.</p>
+        <span class="zs-mode-action"><b>Entrar</b><small>partida breve</small></span>
+      </a>
+      <a class="zs-mode-card" href="hold.html">
+        <span class="zs-mode-number">03</span>
+        <span class="zs-mode-kind">Defensa</span>
+        <span class="zs-mode-mark" aria-hidden="true"></span>
+        <h2>La Fortaleza</h2>
+        <p>Excava, construye y prepara una pequeña base para resistir cada noche.</p>
+        <span class="zs-mode-action"><b>Defender</b><small>construcción</small></span>
+      </a>
+      <a class="zs-mode-card" href="zone.html">
+        <span class="zs-mode-number">04</span>
+        <span class="zs-mode-kind">Estrategia</span>
+        <span class="zs-mode-mark" aria-hidden="true"></span>
+        <h2>La Zona</h2>
+        <p>Administra una colonia persistente, envía escuadras y decide el destino de la cura.</p>
+        <span class="zs-mode-action"><b>Sobrevivir</b><small>campaña</small></span>
+      </a>
+    </nav>
+    <section class="zs-settings" aria-label="Ajustes básicos">
+      <div class="zs-setting">
+        <span class="zs-setting-label">Sonido</span>
+        <button type="button" data-setting-sound aria-pressed="true">encendido</button>
+        <input type="range" min="0" max="100" step="5" value="50" data-setting-volume aria-label="Volumen">
+      </div>
+      <div class="zs-setting">
+        <span class="zs-setting-label">Cámara</span>
+        <button type="button" data-setting-camera aria-pressed="true">automática</button>
+      </div>
+      <div class="zs-setting">
+        <span class="zs-setting-label">Pantalla</span>
+        <button type="button" data-setting-fullscreen>ampliar</button>
+      </div>
+    </section>
+    <p class="zs-menu-footnote">Las preferencias se guardan en este navegador.</p>
+  </section>
+</main>
 <script src="js/sketch.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/grid.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/camera.js"></script>
@@ -24,5 +89,6 @@
 <script src="js/draw.js"></script>
 <script src="js/sound.js"></script>
 <script src="js/main.js"></script>
+<script src="js/menu.js"></script>
 </body>
 </html>

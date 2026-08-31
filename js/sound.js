@@ -47,7 +47,7 @@
         const A = window.AudioContext || window.webkitAudioContext;
         ac = new A();
         master = ac.createGain();
-        master.gain.value = 0.5;
+        master.gain.value = ZS.settings ? ZS.settings.soundLevel() : 0.5;
         master.connect(ac.destination);
       } catch {
         ac = null;
@@ -942,10 +942,17 @@
     }
   }
 
+  function applySettings() {
+    if (!master || !ac) return;
+    const level = ZS.settings ? ZS.settings.soundLevel() : 0.5;
+    master.gain.setTargetAtTime(level, ac.currentTime, 0.02);
+  }
+
   ZS.sound = {
     event,
     tick,
     unlock,
+    applySettings,
     get unlocked() {
       return !!ac && ac.state === "running";
     },

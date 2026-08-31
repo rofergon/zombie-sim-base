@@ -112,7 +112,9 @@
   // default to the auto camera when the scenario can point at the action;
   // drag/zoom input hands control back for the session — a tap doesn't
   // (it's an action, e.g. sound unlock or the artillery call)
-  cam.auto = typeof scenario.camInterest === "function";
+  cam.auto =
+    typeof scenario.camInterest === "function" &&
+    (!ZS.settings || ZS.settings.get("autoCamera") !== false);
   if (cam.auto) {
     // Scenario-owned setup targets (Zone's recommended HQ) are already
     // known. Start there instead of rendering an entire large world once

@@ -1,0 +1,329 @@
+:root {
+  --zs-ink: #3d342b;
+  --zs-green: #4f6937;
+  --zs-red: #963e30;
+  --zs-paper: #f6f1e3;
+  --zs-script: "Segoe Script", "Bradley Hand", "Comic Sans MS", cursive;
+}
+
+.zs-menu-link {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 12;
+  box-sizing: border-box;
+  min-width: 86px;
+  padding: 7px 13px;
+  border: 1.5px solid rgba(61, 52, 43, 0.62);
+  border-radius: 5px;
+  color: var(--zs-ink);
+  background: rgba(246, 241, 227, 0.94);
+  box-shadow: 2px 3px 0 rgba(61, 52, 43, 0.13);
+  font: 600 14px/1.2 var(--zs-script);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transform: rotate(0.35deg);
+}
+
+.zs-menu-link:hover,
+.zs-menu-link:focus-visible {
+  background: rgba(218, 224, 194, 0.98);
+  outline: 2px solid rgba(79, 105, 55, 0.5);
+  outline-offset: 2px;
+}
+
+.zs-menu-link[hidden] {
+  display: none;
+}
+
+#main-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: clamp(14px, 3vw, 38px);
+  background: rgba(231, 223, 203, 0.78);
+  color: var(--zs-ink);
+  font-family: var(--zs-script);
+  overscroll-behavior: contain;
+}
+
+#main-menu[hidden] {
+  display: none;
+}
+
+.zs-menu-art {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.zs-menu-sheet {
+  position: relative;
+  box-sizing: border-box;
+  width: min(1120px, 100%);
+  min-height: calc(100vh - clamp(28px, 6vw, 76px));
+  margin: 0 auto;
+  padding: clamp(24px, 3.5vw, 48px);
+  background:
+    linear-gradient(88deg, transparent 0 49%, rgba(116, 94, 65, 0.025) 50%, transparent 51%),
+    rgba(246, 241, 227, 0.97);
+  box-shadow: 6px 8px 0 rgba(61, 52, 43, 0.11);
+}
+
+.zs-menu-sheet > * {
+  position: relative;
+  z-index: 2;
+}
+
+.zs-menu-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  align-items: end;
+  margin-bottom: clamp(20px, 3vh, 34px);
+}
+
+.zs-menu-kicker,
+.zs-setting-label,
+.zs-mode-kind {
+  margin: 0;
+  color: var(--zs-green);
+  font: 700 11px/1.2 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.zs-menu-head h1 {
+  margin: 3px 0 0;
+  font-size: clamp(38px, 6vw, 74px);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.055em;
+}
+
+.zs-menu-head > p {
+  max-width: 320px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+
+.zs-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(11px, 1.5vw, 19px);
+}
+
+.zs-mode-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 316px;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 18px 17px 16px;
+  border: 0;
+  border-radius: 2px;
+  color: inherit;
+  background: rgba(255, 252, 241, 0.3);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.zs-mode-card:hover,
+.zs-mode-card:focus-visible {
+  background: rgba(218, 224, 194, 0.34);
+  outline: none;
+  transform: translateY(-2px) rotate(0.18deg);
+}
+
+.zs-mode-card:nth-child(even) {
+  transform: rotate(0.18deg);
+}
+
+.zs-mode-card:nth-child(even):hover,
+.zs-mode-card:nth-child(even):focus-visible {
+  transform: translateY(-2px) rotate(-0.08deg);
+}
+
+.zs-mode-number {
+  position: absolute;
+  top: 14px;
+  right: 15px;
+  color: rgba(61, 52, 43, 0.22);
+  font: italic 19px/1 Georgia, serif;
+}
+
+.zs-mode-mark {
+  height: 86px;
+  margin: 16px 0 2px;
+}
+
+.zs-mode-card h2 {
+  margin: 7px 0 8px;
+  font-size: clamp(21px, 2vw, 28px);
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.zs-mode-card p {
+  margin: 0;
+  font: 13px/1.48 ui-sans-serif, system-ui, sans-serif;
+  opacity: 0.72;
+}
+
+.zs-mode-action {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 18px;
+  color: var(--zs-red);
+  font-size: 14px;
+}
+
+.zs-mode-action small {
+  color: var(--zs-ink);
+  font: 10px/1.6 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  opacity: 0.46;
+  text-transform: uppercase;
+}
+
+.zs-settings {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 16px;
+  margin-top: clamp(24px, 4vh, 42px);
+  padding-top: 20px;
+}
+
+.zs-setting {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 14px;
+  align-items: center;
+  min-width: 0;
+}
+
+.zs-setting button {
+  min-width: 96px;
+  padding: 6px 10px;
+  border: 1.3px solid rgba(61, 52, 43, 0.48);
+  border-radius: 4px;
+  color: var(--zs-ink);
+  background: rgba(112, 148, 72, 0.12);
+  font: 600 13px/1.2 var(--zs-script);
+  cursor: pointer;
+}
+
+.zs-setting button:hover,
+.zs-setting button:focus-visible {
+  background: rgba(112, 148, 72, 0.27);
+  outline: 2px solid rgba(79, 105, 55, 0.45);
+  outline-offset: 2px;
+}
+
+.zs-setting input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 2px 0 0;
+  accent-color: var(--zs-green);
+  cursor: pointer;
+}
+
+.zs-setting input[type="range"]:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.zs-menu-footnote {
+  margin: 20px 0 -8px;
+  font: italic 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+  opacity: 0.42;
+}
+
+@media (max-width: 900px) {
+  #main-menu {
+    padding: 18px;
+  }
+
+  .zs-menu-sheet {
+    min-height: calc(100vh - 36px);
+    padding: 30px;
+  }
+
+  .zs-menu-head {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .zs-menu-head > p {
+    max-width: 580px;
+  }
+
+  .zs-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .zs-mode-card {
+    min-height: 260px;
+  }
+
+  .zs-mode-mark {
+    height: 70px;
+  }
+}
+
+@media (max-width: 560px) {
+  #main-menu {
+    padding: 8px;
+  }
+
+  .zs-menu-sheet {
+    min-height: calc(100vh - 16px);
+    padding: 24px 18px 30px;
+  }
+
+  .zs-menu-head h1 {
+    font-size: 44px;
+  }
+
+  .zs-mode-grid,
+  .zs-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .zs-mode-card {
+    min-height: 244px;
+  }
+
+  .zs-settings {
+    gap: 19px;
+  }
+
+  .zs-menu-link {
+    top: 9px;
+    right: 9px;
+    min-width: 76px;
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zs-mode-card {
+    transition: none;
+  }
+}
