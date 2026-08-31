@@ -147,7 +147,7 @@
       }
       let target = null,
         best = Infinity;
-      const hasAmmo = squad.inventory[R.AMMO] > 0,
+      const hasAmmo = this.squads.weapons.hasAmmo(squad),
         weapon = hasAmmo ? member.weapon : CFG.WEAPON.MACHETE,
         definition = this.squads.weapons.definition(weapon),
         range =
@@ -182,7 +182,7 @@
       this.squads.weapons.applyAgentWeapon(member, weapon, false);
       let damage = definition.damage;
       if (weapon !== CFG.WEAPON.MACHETE) {
-        squad.inventory[R.AMMO]--;
+        this.squads.weapons.fire(squad);
         damage = this.squads.weapons.damage(weapon, Math.sqrt(best));
         member.muzzle = 0.1;
         ZS.fx.push({ x0: member.x, y0: member.y - 7, x1: target.x, y1: target.y - 6, t: 0.1 });

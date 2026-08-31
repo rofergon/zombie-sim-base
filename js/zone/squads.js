@@ -75,6 +75,10 @@
 
     _prepare(squad) {
       squad.inventory = Array.isArray(squad.inventory) ? squad.inventory : emptyResources();
+      squad.ammoShots = Math.max(
+        0,
+        Math.min(CFG.AMMO_SHOTS_PER_UNIT - 1, squad.ammoShots | 0),
+      );
       squad.spareWeapons = Array.isArray(squad.spareWeapons)
         ? squad.spareWeapons
         : Array.from({ length: W.COUNT }, () => 0);
@@ -124,6 +128,7 @@
         id: this.state.zone.nextSquadId++,
         members,
         inventory: emptyResources(),
+        ammoShots: 0,
         spareWeapons: Array.from({ length: W.COUNT }, () => 0),
         capacity: CFG.SQUAD.INVENTORY_CAPACITY,
         equipment: [],
@@ -866,6 +871,7 @@
           id: squad.id,
           members: squad.members.slice(),
           inventory: squad.inventory.slice(),
+          ammoShots: squad.ammoShots,
           spareWeapons: squad.spareWeapons.slice(),
           capacity: squad.capacity,
           equipment: squad.equipment.slice(),

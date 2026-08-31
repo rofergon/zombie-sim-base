@@ -107,9 +107,7 @@
     }
 
     isUnlocked(kind) {
-      return (
-        kind >= K.FIELD && kind < K.COUNT && Boolean(this.state.zone.tech[T.AGRICULTURE])
-      );
+      return kind >= K.FIELD && kind < K.COUNT && Boolean(this.state.zone.tech[T.AGRICULTURE]);
     }
 
     canAfford(kind) {

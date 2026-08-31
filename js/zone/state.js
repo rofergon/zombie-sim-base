@@ -442,6 +442,7 @@
       id: raw.id,
       members,
       inventory: resources(raw.inventory),
+      ammoShots: clamp(intOr(raw.ammoShots, 0), 0, CFG.AMMO_SHOTS_PER_UNIT - 1),
       spareWeapons: weapons(raw.spareWeapons),
       capacity: clamp(intOr(raw.capacity, CFG.SQUAD.INVENTORY_CAPACITY), 1, 200),
       equipment,
@@ -519,6 +520,7 @@
       hp: clamp(numberOr(raw.hp, maxHP), 0, maxHP),
       maxHP,
       armed: kind === CFG.FORTIFICATION.TRAP ? raw.armed !== false : false,
+      ammoShots: clamp(intOr(raw.ammoShots, 0), 0, CFG.AMMO_SHOTS_PER_UNIT - 1),
     };
   }
 

@@ -195,6 +195,8 @@ The existing pages remain independent regression targets:
   normal harvest from four to seven grain; vast-field inputs and outputs scale
   by four. Fertilization is an explicit per-site recipe and stalls when its
   input is missing.
+- Forestry plantations reuse the same placement, staffing, priority and save
+  flow, turning two initial wood into a renewable eight-wood harvest.
 - Adapted barns convert two grain into two raw meat plus one fertilizer.
   Cookhouses select either two grain plus wood for four rations or two meat
   plus wood for five. Citizens consume only finished rations.
@@ -211,9 +213,10 @@ The existing pages remain independent regression targets:
   or metal, drag a work area, inspect the blue-highlighted nodes and adjust the
   area's requested workers with direct −/+ controls.
 - Existing procedural trees are finite wood nodes and become persistent sketch
-  stumps when felled. Abandoned buildings expose only their existing metal
-  salvage to collection; the structure and its other demolition materials stay
-  intact.
+  stumps when felled. OSM cities seed deterministic woods inside mapped green
+  land and building-free fallback groves, never on roads. Abandoned buildings
+  expose only their existing metal salvage to collection; the structure and
+  its other demolition materials stay intact.
 - Every area is a normal event-driven `GATHER` job with priority, finite nodes,
   worker cargo, an HQ deposit trip and a clickable map marker. Overlapping
   active areas cannot claim the same node.

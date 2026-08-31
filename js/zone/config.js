@@ -311,6 +311,7 @@
       START_MEDICINE: 1,
       PICKUP_RADIUS: 34,
     }),
+    AMMO_SHOTS_PER_UNIT: 10,
     SCAVENGE: Object.freeze({ TICK_SECONDS: 0.45, ENCOUNTER_HP: 3, ATTACK_SECONDS: 1.05 }),
     ADAPT: Object.freeze({
       COSTS: Object.freeze({
@@ -395,8 +396,11 @@
       }),
       HP: Object.freeze([0, 90, 75, 110, 1]),
       TOWER_RANGE: 210,
-      TOWER_SECONDS: 0.9,
+      TOWER_SECONDS: 0.45,
       TOWER_DAMAGE: 2,
+      BOW_RANGE: 165,
+      BOW_SECONDS: 1.2,
+      BOW_DAMAGE: 1,
       TRAP_RANGE: 23,
       TRAP_DAMAGE: 4,
       GARRISON_RANGE_MULTIPLIER: 1.35,

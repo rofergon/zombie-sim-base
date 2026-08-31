@@ -127,6 +127,10 @@
     }
 
     prepareSquad(squad) {
+      squad.ammoShots = Math.max(
+        0,
+        Math.min(CFG.AMMO_SHOTS_PER_UNIT - 1, squad.ammoShots | 0),
+      );
       if (!Array.isArray(squad.spareWeapons)) squad.spareWeapons = emptyWeapons();
       else
         for (let id = 0; id < W.COUNT; id++)
@@ -147,9 +151,27 @@
       return def.damage;
     }
 
+    hasAmmo(squad) {
+      return Boolean(squad && (squad.ammoShots > 0 || squad.inventory[R.AMMO] > 0));
+    }
+
+    fire(squad) {
+      if (!this.hasAmmo(squad)) return false;
+      if (squad.ammoShots <= 0) {
+        squad.inventory[R.AMMO]--;
+        squad.ammoShots = CFG.AMMO_SHOTS_PER_UNIT;
+      }
+      squad.ammoShots--;
+      return true;
+    }
+
+    ammoRemaining(squad) {
+      return squad.inventory[R.AMMO] * CFG.AMMO_SHOTS_PER_UNIT + squad.ammoShots;
+    }
+
     squadRange(squad) {
       let range = DEFINITIONS[W.MACHETE].range;
-      const hasAmmo = squad.inventory[R.AMMO] > 0;
+      const hasAmmo = this.hasAmmo(squad);
       for (let i = 0; i < squad.equipment.length; i++) {
         const weapon = hasAmmo ? squad.equipment[i] : W.MACHETE;
         range = Math.max(range, this.definition(weapon).range);
