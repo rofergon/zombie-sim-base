@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v14. */
+   shapes are discarded at this storage boundary so gameplay only sees v15. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -16,11 +16,20 @@
     return out;
   }
 
+  function weapons(source) {
+    const out = Array.from({ length: CFG.WEAPON.COUNT }, () => 0);
+    if (!Array.isArray(source)) return out;
+    for (let i = CFG.WEAPON.PISTOL; i < out.length; i++)
+      out[i] = Math.max(0, intOr(source[i], 0));
+    return out;
+  }
+
   function defaultZone() {
     return {
       hqId: null,
       initialized: false,
       stock: resources(null),
+      armory: weapons(null),
       nextCitizenId: 1,
       citizens: [],
       nextJobId: 1,
@@ -29,6 +38,8 @@
       harvestedTrees: [],
       nextSquadId: 1,
       squads: [],
+      nextWeaponDropId: 1,
+      weaponDrops: [],
       nextFortificationId: 1,
       fortifications: [],
       nextFieldId: 1,
@@ -234,12 +245,20 @@
     return { v: 14, world: data.world, clock: data.clock, zone };
   }
 
+  function migrateV14(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.armory = weapons(null);
+    zone.nextWeaponDropId = 1;
+    zone.weaponDrops = [];
+    return { v: 15, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
       !Number.isInteger(raw.kind) ||
       raw.kind < CFG.ORDER.MOVE ||
-      raw.kind > CFG.ORDER.ATTACK_MOVE
+      raw.kind > CFG.ORDER.PICKUP
     )
       return null;
     const x = numberOr(raw.x, NaN),
@@ -250,6 +269,7 @@
       x,
       y,
       buildingId: Number.isInteger(raw.buildingId) ? raw.buildingId : null,
+      dropId: Number.isInteger(raw.dropId) ? raw.dropId : null,
     };
   }
 
@@ -274,7 +294,7 @@
       jobId: Number.isInteger(raw.jobId) ? raw.jobId : null,
       carry: resources(raw.carry),
       squadId: Number.isInteger(raw.squadId) ? raw.squadId : null,
-      weapon: clamp(intOr(raw.weapon, CFG.WEAPON.MACHETE), CFG.WEAPON.MACHETE, CFG.WEAPON.RIFLE),
+      weapon: clamp(intOr(raw.weapon, CFG.WEAPON.MACHETE), CFG.WEAPON.MACHETE, CFG.WEAPON.SNIPER),
       name: shortText(raw.name, null, 60),
       arrivalDay: Math.max(1, intOr(raw.arrivalDay, 1)),
     };
@@ -387,7 +407,7 @@
     if (Array.isArray(raw.equipment))
       for (let i = 0; i < raw.equipment.length && i < CFG.SQUAD.MAX_MEMBERS; i++)
         equipment.push(
-          clamp(intOr(raw.equipment[i], CFG.WEAPON.MACHETE), CFG.WEAPON.MACHETE, CFG.WEAPON.RIFLE),
+          clamp(intOr(raw.equipment[i], CFG.WEAPON.MACHETE), CFG.WEAPON.MACHETE, CFG.WEAPON.SNIPER),
         );
     if (Array.isArray(raw.orders))
       for (let i = 0; i < raw.orders.length && orders.length < CFG.AGENT.MAX_ORDERS; i++) {
@@ -398,6 +418,7 @@
       id: raw.id,
       members,
       inventory: resources(raw.inventory),
+      spareWeapons: weapons(raw.spareWeapons),
       capacity: clamp(intOr(raw.capacity, CFG.SQUAD.INVENTORY_CAPACITY), 1, 200),
       equipment,
       orders,
@@ -407,6 +428,17 @@
       garrisonBuildingId: Number.isInteger(raw.garrisonBuildingId) ? raw.garrisonBuildingId : null,
       retreating: Boolean(raw.retreating),
       state: typeof raw.state === "string" ? raw.state.slice(0, 24) : "idle",
+    };
+  }
+
+  function normalizeWeaponDrop(raw) {
+    if (!raw || !Number.isInteger(raw.id) || raw.id < 1) return null;
+    return {
+      id: raw.id,
+      x: numberOr(raw.x, 0),
+      y: numberOr(raw.y, 0),
+      resources: resources(raw.resources),
+      weapons: weapons(raw.weapons),
     };
   }
 
@@ -457,7 +489,7 @@
       poi: clamp(intOr(raw.poi, CFG.POI.RESIDENCE), CFG.POI.RESIDENCE, CFG.POI.LIBRARY),
       salvage: resources(raw.salvage),
       loot: resources(raw.loot),
-      lootWeapons: resources(raw.lootWeapons),
+      lootWeapons: weapons(raw.lootWeapons),
       revealed: Boolean(raw.revealed),
       cleared: Boolean(raw.cleared),
       looted: Boolean(raw.looted),
@@ -635,6 +667,7 @@
     zone.hqId = Number.isInteger(source.hqId) ? source.hqId : null;
     zone.initialized = Boolean(source.initialized);
     zone.stock = resources(source.stock);
+    zone.armory = weapons(source.armory);
     zone.workPolicy = normalizeWorkPolicy(source.workPolicy);
     zone.tech = Array.from({ length: CFG.TECH.COUNT }, (_, id) =>
       Boolean(source.tech && source.tech[id]),
@@ -645,6 +678,7 @@
     const citizenIds = [],
       jobIds = [],
       squadIds = [],
+      weaponDropIds = [],
       fortificationIds = [],
       fieldIds = [],
       buildingIds = [];
@@ -675,6 +709,14 @@
         if (squad && !squadIds.includes(squad.id)) {
           squadIds.push(squad.id);
           zone.squads.push(squad);
+        }
+      }
+    if (Array.isArray(source.weaponDrops))
+      for (let i = 0; i < source.weaponDrops.length; i++) {
+        const drop = normalizeWeaponDrop(source.weaponDrops[i]);
+        if (drop && !weaponDropIds.includes(drop.id)) {
+          weaponDropIds.push(drop.id);
+          zone.weaponDrops.push(drop);
         }
       }
     if (Array.isArray(source.fortifications))
@@ -714,6 +756,7 @@
     zone.nextCitizenId = Math.max(1, intOr(source.nextCitizenId, 1));
     zone.nextJobId = Math.max(1, intOr(source.nextJobId, 1));
     zone.nextSquadId = Math.max(1, intOr(source.nextSquadId, 1));
+    zone.nextWeaponDropId = Math.max(1, intOr(source.nextWeaponDropId, 1));
     zone.nextFortificationId = Math.max(1, intOr(source.nextFortificationId, 1));
     zone.nextFieldId = Math.max(1, intOr(source.nextFieldId, 1));
     for (let i = 0; i < zone.citizens.length; i++)
@@ -722,6 +765,8 @@
       zone.nextJobId = Math.max(zone.nextJobId, zone.jobs[i].id + 1);
     for (let i = 0; i < zone.squads.length; i++)
       zone.nextSquadId = Math.max(zone.nextSquadId, zone.squads[i].id + 1);
+    for (let i = 0; i < zone.weaponDrops.length; i++)
+      zone.nextWeaponDropId = Math.max(zone.nextWeaponDropId, zone.weaponDrops[i].id + 1);
     for (let i = 0; i < zone.fortifications.length; i++)
       zone.nextFortificationId = Math.max(zone.nextFortificationId, zone.fortifications[i].id + 1);
     for (let i = 0; i < zone.fields.length; i++)
@@ -758,6 +803,7 @@
       if (data.v === 11) data = migrateV11(data);
       if (data.v === 12) data = migrateV12(data);
       if (data.v === 13) data = migrateV13(data);
+      if (data.v === 14) data = migrateV14(data);
       return normalize(data);
     }
 
@@ -803,6 +849,10 @@
 
     static migrateV13(data) {
       return migrateV13(data);
+    }
+
+    static migrateV14(data) {
+      return migrateV14(data);
     }
 
     static normalize(data) {

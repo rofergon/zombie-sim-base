@@ -103,6 +103,7 @@
     PATROL: 4,
     RETURN_HQ: 5,
     ATTACK_MOVE: 6,
+    PICKUP: 7,
   });
 
   const FORTIFICATION = Object.freeze({ WALL: 1, GATE: 2, TOWER: 3, TRAP: 4, COUNT: 5 });
@@ -118,7 +119,15 @@
     LIBRARY: 7,
   });
 
-  const WEAPON = Object.freeze({ MACHETE: 1, PISTOL: 2, RIFLE: 3, COUNT: 4 });
+  const WEAPON = Object.freeze({
+    MACHETE: 1,
+    PISTOL: 2,
+    RIFLE: 3,
+    ASSAULT_RIFLE: 3,
+    SHOTGUN: 4,
+    SNIPER: 5,
+    COUNT: 6,
+  });
 
   const FACTION = Object.freeze({ FAROS: 0, COBALTO: 1, BASTION: 2, COUNT: 3 });
   const LAW = Object.freeze({ NONE: 0, OPEN_DOORS: 1, RATIONS: 2, QUARANTINE: 3, COUNT: 4 });
@@ -133,7 +142,7 @@
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 14,
+    SAVE_VERSION: 15,
     RESOURCE,
     JOB,
     ROLE,
@@ -265,6 +274,7 @@
       MELEE_SECONDS: 0.65,
       START_AMMO: 16,
       START_MEDICINE: 1,
+      PICKUP_RADIUS: 34,
     }),
     SCAVENGE: Object.freeze({ TICK_SECONDS: 0.45, ENCOUNTER_HP: 3, ATTACK_SECONDS: 1.05 }),
     ADAPT: Object.freeze({
