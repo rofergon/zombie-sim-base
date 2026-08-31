@@ -101,6 +101,7 @@
         rally = door ? door.front : this.map.hq;
       for (let i = 0; i < this.squads.list.length; i++) {
         const squad = this.squads.list[i];
+        if (squad.away) continue;
         if (squad.garrisonBuildingId !== null) {
           squad.state = "garrisoned";
           continue;

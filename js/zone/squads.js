@@ -6,6 +6,7 @@
   const ZS = (window.ZS = window.ZS || {});
   const CFG = ZS.ZoneConfig;
   const R = CFG.RESOURCE;
+  const W = CFG.WEAPON;
 
   function emptyResources() {
     return Array.from({ length: R.COUNT }, () => 0);
@@ -17,6 +18,9 @@
       this.map = map;
       this.citizens = null;
       this.scavenge = null;
+      this.weapons = null;
+      this.vehicles = null;
+      this.logistics = null;
       this.agents = null;
       this.list = state.zone.squads;
       this.onChanged = null;
@@ -49,8 +53,31 @@
       }
     }
 
+    connectWeapons(weapons) {
+      this.weapons = weapons;
+      for (let i = 0; i < this.list.length; i++) {
+        const squad = this.list[i];
+        weapons.prepareSquad(squad);
+        for (let rank = 0; rank < squad.members.length; rank++) {
+          const member = this.citizens.at(squad.members[rank]);
+          if (member) this._bind(member, squad, rank);
+        }
+      }
+    }
+
+    connectVehicles(vehicles) {
+      this.vehicles = vehicles;
+    }
+
+    connectLogistics(logistics) {
+      this.logistics = logistics;
+    }
+
     _prepare(squad) {
       squad.inventory = Array.isArray(squad.inventory) ? squad.inventory : emptyResources();
+      squad.spareWeapons = Array.isArray(squad.spareWeapons)
+        ? squad.spareWeapons
+        : Array.from({ length: W.COUNT }, () => 0);
       squad.equipment = Array.isArray(squad.equipment) ? squad.equipment : [];
       squad.orders = Array.isArray(squad.orders) ? squad.orders : [];
       squad.orderIndex = Math.max(0, Math.min(squad.orders.length, squad.orderIndex || 0));
@@ -63,6 +90,8 @@
         ? squad.garrisonBuildingId
         : null;
       squad.retreating = Boolean(squad.retreating);
+      squad.vehicleId = Number.isInteger(squad.vehicleId) ? squad.vehicleId : null;
+      squad.away = Boolean(squad.away);
       squad.state = squad.state || "idle";
       squad.attackT = squad.attackT || 0;
       squad.routePaths = [];
@@ -95,6 +124,7 @@
         id: this.state.zone.nextSquadId++,
         members,
         inventory: emptyResources(),
+        spareWeapons: Array.from({ length: W.COUNT }, () => 0),
         capacity: CFG.SQUAD.INVENTORY_CAPACITY,
         equipment: [],
         orders: [],
@@ -103,6 +133,8 @@
         resumeBuildingId: null,
         garrisonBuildingId: null,
         retreating: false,
+        vehicleId: null,
+        away: false,
         state: "idle",
         attackT: 0,
       };
@@ -137,8 +169,11 @@
       member.orders = squad.orders;
       member.orderIndex = squad.orderIndex;
       member.weapon = squad.equipment[rank] || member.weapon || CFG.WEAPON.MACHETE;
-      member.gun = member.weapon !== CFG.WEAPON.MACHETE;
-      member.wep = member.weapon === CFG.WEAPON.RIFLE ? "rifle" : member.gun ? "pistol" : null;
+      if (this.weapons) this.weapons.applyAgentWeapon(member, member.weapon);
+      else {
+        member.gun = member.weapon !== CFG.WEAPON.MACHETE;
+        member.wep = member.weapon === CFG.WEAPON.RIFLE ? "rifle" : member.gun ? "pistol" : null;
+      }
     }
 
     removeCitizen(agent, died) {
@@ -150,6 +185,13 @@
       }
       const index = squad.members.indexOf(agent.cid);
       if (index >= 0) {
+        if (died && this.weapons)
+          this.weapons.dropMember(agent, squad, index, squad.members.length === 1);
+        else if (!died && this.weapons) {
+          const weapon = squad.equipment[index] || W.MACHETE;
+          if (weapon !== W.MACHETE) this.weapons.armory[weapon]++;
+          this.weapons.applyAgentWeapon(agent, W.MACHETE);
+        }
         squad.members.splice(index, 1);
         if (index < squad.equipment.length) squad.equipment.splice(index, 1);
       }
@@ -162,7 +204,8 @@
         agent.orderIndex = 0;
       }
       if (!squad.members.length) {
-        for (let i = 0; i < R.COUNT; i++) this.state.stock[i] += squad.inventory[i];
+        if (this.vehicles) this.vehicles.releaseSquad(squad);
+        if (!died) for (let i = 0; i < R.COUNT; i++) this.state.stock[i] += squad.inventory[i];
         const squadIndex = this.list.indexOf(squad);
         if (squadIndex >= 0) this.list.splice(squadIndex, 1);
       } else
@@ -176,7 +219,9 @@
 
     disband(id) {
       const squad = this.at(id);
-      if (!squad || !this._atHQ(squad)) return false;
+      if (!squad || squad.away || !this._atHQ(squad)) return false;
+      if (this.vehicles) this.vehicles.releaseSquad(squad);
+      if (this.weapons) this.weapons.disarm(squad);
       for (let i = squad.members.length - 1; i >= 0; i--) {
         const member = this.citizens.at(squad.members[i]);
         if (member) this.removeCitizen(member, false);
@@ -211,6 +256,30 @@
       return issued;
     }
 
+    issuePickup(squad, drop, append) {
+      if (!this.weapons || !drop || !this.weapons.at(drop.id)) return false;
+      const issued = this.issue(squad, CFG.ORDER.PICKUP, drop.x, drop.y, null, append, drop.id);
+      if (issued) squad.state = "recovering equipment";
+      return issued;
+    }
+
+    issueBoard(squad, vehicle, append) {
+      if (!this.vehicles || !vehicle || vehicle.hp <= 0) return false;
+      if (vehicle.squadId !== null && vehicle.squadId !== squad.id) return false;
+      const issued = this.issue(
+        squad,
+        CFG.ORDER.BOARD,
+        vehicle.x,
+        vehicle.y,
+        null,
+        append,
+        null,
+        vehicle.id,
+      );
+      if (issued) squad.state = vehicle.recovered ? "boarding vehicle" : "recovering vehicle";
+      return issued;
+    }
+
     issueGarrison(squad, building, append) {
       if (!squad || !building || !building.shape || !this.map.reachable(building)) return false;
       const target = this.map.entryPoint(building);
@@ -227,19 +296,37 @@
       return issued;
     }
 
-    issue(squad, kind, x, y, buildingId, append) {
-      if (!squad) return false;
+    issue(squad, kind, x, y, buildingId, append, dropId, vehicleId) {
+      if (!squad || squad.away) return false;
       squad.garrisonBuildingId = null;
       squad.retreating = false;
       if (!append) this.clearOrders(squad);
       else this._compactOrders(squad);
       if (squad.orders.length - squad.orderIndex >= CFG.AGENT.MAX_ORDERS) return false;
-      const record = Number.isInteger(buildingId) ? this.map.at(buildingId) : null,
+      const drop = Number.isInteger(dropId) && this.weapons ? this.weapons.at(dropId) : null,
+        vehicle = Number.isInteger(vehicleId) && this.vehicles ? this.vehicles.at(vehicleId) : null,
+        record = Number.isInteger(buildingId) ? this.map.at(buildingId) : null,
         entry = record && this.map.reachable(record) ? this.map.entryPoint(record) : null,
-        point = record ? entry : this.map.nav.nearestWalkable(x, y, 120, false);
+        point = record
+          ? entry
+          : this.map.nav.nearestWalkable(
+              drop ? drop.x : vehicle ? vehicle.x : x,
+              drop ? drop.y : vehicle ? vehicle.y : y,
+              120,
+              false,
+            );
       if (Number.isInteger(buildingId) && !record) return false;
+      if (Number.isInteger(dropId) && !drop) return false;
+      if (Number.isInteger(vehicleId) && !vehicle) return false;
       if (!point) return false;
-      squad.orders.push({ kind, x: point.x, y: point.y, buildingId });
+      squad.orders.push({
+        kind,
+        x: point.x,
+        y: point.y,
+        buildingId,
+        dropId: drop ? drop.id : null,
+        vehicleId: vehicle ? vehicle.id : null,
+      });
       squad.patrolLoop = false;
       this._rebuildRoutePaths(squad);
       this._syncOrderViews(squad);
@@ -442,7 +529,7 @@
 
     update(member, dt, t, nav) {
       const squad = this.at(member.squadId);
-      if (!squad || member.dead) return;
+      if (!squad || member.dead || squad.away) return;
       member.orderIndex = squad.orderIndex;
       if (this.scavenge) this.scavenge.autoCombat(member, squad, dt, t, nav);
       if (!squad.orders.length) {
@@ -470,6 +557,39 @@
         }
       }
       const order = squad.orders[squad.orderIndex];
+      if (order.kind === CFG.ORDER.BOARD && this.vehicles) {
+        const vehicle = this.vehicles.at(order.vehicleId);
+        if (!vehicle || (vehicle.squadId !== null && vehicle.squadId !== squad.id)) {
+          this._advance(squad);
+          return;
+        }
+        order.x = vehicle.x;
+        order.y = vehicle.y;
+        const result = ZS.planAndFollow(leader, order, false, CFG.AGENT.SPEED, dt, t, nav);
+        if (result === "fail") this._recoverRoute(leader, squad, nav);
+        else if (result === "arrived") {
+          this.vehicles.recover(squad, vehicle);
+          this._advance(squad);
+        }
+        return;
+      }
+      if (order.kind === CFG.ORDER.PICKUP && this.weapons) {
+        const drop = this.weapons.at(order.dropId);
+        if (!drop) {
+          this._advance(squad);
+          return;
+        }
+        order.x = drop.x;
+        order.y = drop.y;
+        const result = ZS.planAndFollow(leader, order, false, CFG.AGENT.SPEED, dt, t, nav);
+        if (result === "fail") this._recoverRoute(leader, squad, nav);
+        else if (result === "arrived") {
+          const taken = this.weapons.collect(drop, squad);
+          squad.state = taken.weapons || taken.resources ? "equipment recovered" : "packs full";
+          this._advance(squad);
+        }
+        return;
+      }
       if (order.kind === CFG.ORDER.SCAVENGE && this.scavenge) {
         const result = this.scavenge.updateSquad(squad, order, leader, dt, t, nav);
         if (result === "complete") this._advance(squad);
@@ -477,7 +597,9 @@
         return;
       }
       const moveSpeed =
-          CFG.AGENT.SPEED * (squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1),
+          CFG.AGENT.SPEED *
+          (squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1) *
+          (this.vehicles ? this.vehicles.speedMultiplier(squad) : 1),
         result = ZS.planAndFollow(leader, order, false, moveSpeed, dt, t, nav);
       if (result === "fail") {
         this._recoverRoute(leader, squad, nav);
@@ -594,17 +716,28 @@
       member.a = Math.atan2(dy, dx);
       const speed =
         (d > 80 ? CFG.AGENT.SPEED * 1.18 : CFG.AGENT.SPEED) *
-        (squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1);
+        (squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1) *
+        (this.vehicles ? this.vehicles.speedMultiplier(squad) : 1);
       member.vx += (Math.cos(member.a) * speed - member.vx) * dt * 3;
       member.vy += (Math.sin(member.a) * speed - member.vy) * dt * 3;
       member.wantMove = true;
     }
 
     _deposit(squad) {
-      for (let i = 0; i < R.COUNT; i++) {
-        this.state.stock[i] += squad.inventory[i];
-        squad.inventory[i] = 0;
+      if (this.logistics) this.logistics.depositCargo(squad.inventory);
+      else
+        for (let i = 0; i < R.COUNT; i++) {
+          this.state.stock[i] += squad.inventory[i];
+          squad.inventory[i] = 0;
+        }
+      let resourcesRemaining = 0;
+      for (let i = 0; i < R.COUNT; i++) resourcesRemaining += squad.inventory[i];
+      if (resourcesRemaining > 0) {
+        squad.state = "waiting for storage";
+        if (this.onChanged) this.onChanged();
+        return true;
       }
+      if (this.weapons) this.weapons.deposit(squad);
       const ammo = Math.min(CFG.SQUAD.START_AMMO, this.state.stock[R.AMMO]),
         medicine = Math.min(CFG.SQUAD.START_MEDICINE, this.state.stock[R.MEDICINE]);
       squad.inventory[R.AMMO] = ammo;
@@ -644,7 +777,13 @@
       for (let i = squad.orders.length - 1; i >= 0; i--) {
         const order = squad.orders[i];
         let point = null;
-        if (Number.isInteger(order.buildingId)) {
+        if (Number.isInteger(order.vehicleId) && this.vehicles) {
+          const vehicle = this.vehicles.at(order.vehicleId);
+          if (vehicle) point = this.map.nav.nearestWalkable(vehicle.x, vehicle.y, 120, false);
+        } else if (Number.isInteger(order.dropId) && this.weapons) {
+          const drop = this.weapons.at(order.dropId);
+          if (drop) point = this.map.nav.nearestWalkable(drop.x, drop.y, 120, false);
+        } else if (Number.isInteger(order.buildingId)) {
           const record = this.map.at(order.buildingId);
           if (record && this.map.reachable(record)) point = this.map.entryPoint(record);
         } else point = this.map.nav.nearestWalkable(order.x, order.y, 120, false);
@@ -687,6 +826,7 @@
     inventoryTotal(squad) {
       let total = 0;
       for (let i = 0; i < R.COUNT; i++) total += squad.inventory[i];
+      if (this.weapons) total += this.weapons.cargoTotal(squad);
       return total;
     }
 
@@ -718,12 +858,15 @@
             x: order.x,
             y: order.y,
             buildingId: order.buildingId,
+            dropId: order.dropId,
+            vehicleId: order.vehicleId,
           });
         }
         out.push({
           id: squad.id,
           members: squad.members.slice(),
           inventory: squad.inventory.slice(),
+          spareWeapons: squad.spareWeapons.slice(),
           capacity: squad.capacity,
           equipment: squad.equipment.slice(),
           orders,
@@ -732,6 +875,8 @@
           resumeBuildingId: squad.resumeBuildingId,
           garrisonBuildingId: squad.garrisonBuildingId,
           retreating: squad.retreating,
+          vehicleId: squad.vehicleId,
+          away: squad.away,
           state: squad.state,
         });
       }

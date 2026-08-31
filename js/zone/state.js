@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v15. */
+   shapes are discarded at this storage boundary so gameplay only sees v16. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -19,8 +19,7 @@
   function weapons(source) {
     const out = Array.from({ length: CFG.WEAPON.COUNT }, () => 0);
     if (!Array.isArray(source)) return out;
-    for (let i = CFG.WEAPON.PISTOL; i < out.length; i++)
-      out[i] = Math.max(0, intOr(source[i], 0));
+    for (let i = CFG.WEAPON.PISTOL; i < out.length; i++) out[i] = Math.max(0, intOr(source[i], 0));
     return out;
   }
 
@@ -40,6 +39,11 @@
       squads: [],
       nextWeaponDropId: 1,
       weaponDrops: [],
+      nextVehicleId: 1,
+      vehicles: [],
+      nextThreatId: 1,
+      threats: [],
+      lastImmigrationDay: 0,
       nextFortificationId: 1,
       fortifications: [],
       nextFieldId: 1,
@@ -253,12 +257,22 @@
     return { v: 15, world: data.world, clock: data.clock, zone };
   }
 
+  function migrateV15(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.nextVehicleId = 1;
+    zone.vehicles = [];
+    zone.nextThreatId = 1;
+    zone.threats = [];
+    zone.lastImmigrationDay = 0;
+    return { v: 16, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
       !Number.isInteger(raw.kind) ||
       raw.kind < CFG.ORDER.MOVE ||
-      raw.kind > CFG.ORDER.PICKUP
+      raw.kind > CFG.ORDER.BOARD
     )
       return null;
     const x = numberOr(raw.x, NaN),
@@ -270,6 +284,7 @@
       y,
       buildingId: Number.isInteger(raw.buildingId) ? raw.buildingId : null,
       dropId: Number.isInteger(raw.dropId) ? raw.dropId : null,
+      vehicleId: Number.isInteger(raw.vehicleId) ? raw.vehicleId : null,
     };
   }
 
@@ -297,6 +312,15 @@
       weapon: clamp(intOr(raw.weapon, CFG.WEAPON.MACHETE), CFG.WEAPON.MACHETE, CFG.WEAPON.SNIPER),
       name: shortText(raw.name, null, 60),
       arrivalDay: Math.max(1, intOr(raw.arrivalDay, 1)),
+      infection: clamp(numberOr(raw.infection, 0), 0, CFG.CITIZEN.INFECTION_MAX),
+      skills: Array.from({ length: CFG.SKILL.COUNT }, (_, id) =>
+        clamp(numberOr(raw.skills && raw.skills[id], 0), 0, 10),
+      ),
+      skillXP: Array.from({ length: CFG.SKILL.COUNT }, (_, id) =>
+        clamp(numberOr(raw.skillXP && raw.skillXP[id], 0), 0, CFG.CITIZEN.SKILL_XP_PER_LEVEL),
+      ),
+      trait: clamp(intOr(raw.trait, 0), 0, 3),
+      away: Boolean(raw.away),
     };
   }
 
@@ -427,7 +451,44 @@
       resumeBuildingId: Number.isInteger(raw.resumeBuildingId) ? raw.resumeBuildingId : null,
       garrisonBuildingId: Number.isInteger(raw.garrisonBuildingId) ? raw.garrisonBuildingId : null,
       retreating: Boolean(raw.retreating),
+      vehicleId: Number.isInteger(raw.vehicleId) ? raw.vehicleId : null,
+      away: Boolean(raw.away),
       state: typeof raw.state === "string" ? raw.state.slice(0, 24) : "idle",
+    };
+  }
+
+  function normalizeVehicle(raw) {
+    if (!raw || !Number.isInteger(raw.id) || raw.id < 1) return null;
+    const kind = clamp(intOr(raw.kind, CFG.VEHICLE.CAR), CFG.VEHICLE.CAR, CFG.VEHICLE.TRUCK),
+      maxHP = Math.max(1, numberOr(raw.maxHP, CFG.VEHICLES.HP[kind]));
+    return {
+      id: raw.id,
+      kind,
+      x: numberOr(raw.x, 0),
+      y: numberOr(raw.y, 0),
+      a: numberOr(raw.a, 0),
+      hp: clamp(numberOr(raw.hp, maxHP), 0, maxHP),
+      maxHP,
+      fuel: clamp(numberOr(raw.fuel, 0), 0, 100),
+      capacity: clamp(intOr(raw.capacity, CFG.VEHICLES.CAPACITY[kind]), 1, 200),
+      recovered: Boolean(raw.recovered),
+      squadId: Number.isInteger(raw.squadId) ? raw.squadId : null,
+    };
+  }
+
+  function normalizeThreat(raw) {
+    if (!raw || !Number.isInteger(raw.id) || raw.id < 1) return null;
+    const kind = clamp(intOr(raw.kind, CFG.THREAT.LAIR), CFG.THREAT.LAIR, CFG.THREAT.RAIDERS),
+      maxStrength = clamp(intOr(raw.maxStrength, 3), 1, 24);
+    return {
+      id: raw.id,
+      kind,
+      buildingId: Math.max(0, intOr(raw.buildingId, 0)),
+      strength: clamp(intOr(raw.strength, maxStrength), 0, maxStrength),
+      maxStrength,
+      revealed: Boolean(raw.revealed),
+      cleared: Boolean(raw.cleared) || intOr(raw.strength, maxStrength) <= 0,
+      lastRaidDay: Math.max(0, intOr(raw.lastRaidDay, 0)),
     };
   }
 
@@ -554,6 +615,10 @@
     return {
       regionId: raw.regionId,
       remaining: clamp(numberOr(raw.remaining, 0), 0, 1440),
+      duration: clamp(numberOr(raw.duration, 180), 1, 1440),
+      squadId: Number.isInteger(raw.squadId) ? raw.squadId : null,
+      vehicleId: Number.isInteger(raw.vehicleId) ? raw.vehicleId : null,
+      seed: intOr(raw.seed, 0),
     };
   }
 
@@ -675,80 +740,103 @@
     zone.research = normalizeResearch(source.research, zone.tech);
     zone.defense = normalizeDefense(source.defense);
     zone.campaign = normalizeCampaign(source.campaign);
-    const citizenIds = [],
-      jobIds = [],
-      squadIds = [],
-      weaponDropIds = [],
-      fortificationIds = [],
-      fieldIds = [],
-      buildingIds = [];
+    const citizenIds = new Set(),
+      jobIds = new Set(),
+      squadIds = new Set(),
+      weaponDropIds = new Set(),
+      vehicleIds = new Set(),
+      threatIds = new Set(),
+      fortificationIds = new Set(),
+      fieldIds = new Set(),
+      buildingIds = new Set();
     if (Array.isArray(source.citizens))
       for (let i = 0; i < source.citizens.length; i++) {
         const citizen = normalizeCitizen(source.citizens[i]);
-        if (citizen && !citizenIds.includes(citizen.id)) {
-          citizenIds.push(citizen.id);
+        if (citizen && !citizenIds.has(citizen.id)) {
+          citizenIds.add(citizen.id);
           zone.citizens.push(citizen);
         }
       }
     if (Array.isArray(source.jobs))
       for (let i = 0; i < source.jobs.length; i++) {
         const job = normalizeJob(source.jobs[i]);
-        if (job && !jobIds.includes(job.id)) {
-          jobIds.push(job.id);
+        if (job && !jobIds.has(job.id)) {
+          jobIds.add(job.id);
           zone.jobs.push(job);
         }
       }
-    if (Array.isArray(source.harvestedTrees))
+    if (Array.isArray(source.harvestedTrees)) {
+      const harvestedTreeIds = new Set();
       for (let i = 0; i < source.harvestedTrees.length; i++) {
         const id = intOr(source.harvestedTrees[i], -1);
-        if (id >= 0 && !zone.harvestedTrees.includes(id)) zone.harvestedTrees.push(id);
+        if (id >= 0 && !harvestedTreeIds.has(id)) {
+          harvestedTreeIds.add(id);
+          zone.harvestedTrees.push(id);
+        }
       }
+    }
     if (Array.isArray(source.squads))
       for (let i = 0; i < source.squads.length; i++) {
         const squad = normalizeSquad(source.squads[i]);
-        if (squad && !squadIds.includes(squad.id)) {
-          squadIds.push(squad.id);
+        if (squad && !squadIds.has(squad.id)) {
+          squadIds.add(squad.id);
           zone.squads.push(squad);
         }
       }
     if (Array.isArray(source.weaponDrops))
       for (let i = 0; i < source.weaponDrops.length; i++) {
         const drop = normalizeWeaponDrop(source.weaponDrops[i]);
-        if (drop && !weaponDropIds.includes(drop.id)) {
-          weaponDropIds.push(drop.id);
+        if (drop && !weaponDropIds.has(drop.id)) {
+          weaponDropIds.add(drop.id);
           zone.weaponDrops.push(drop);
+        }
+      }
+    if (Array.isArray(source.vehicles))
+      for (let i = 0; i < source.vehicles.length; i++) {
+        const vehicle = normalizeVehicle(source.vehicles[i]);
+        if (vehicle && vehicle.hp > 0 && !vehicleIds.has(vehicle.id)) {
+          vehicleIds.add(vehicle.id);
+          zone.vehicles.push(vehicle);
+        }
+      }
+    if (Array.isArray(source.threats))
+      for (let i = 0; i < source.threats.length; i++) {
+        const threat = normalizeThreat(source.threats[i]);
+        if (threat && !threatIds.has(threat.id)) {
+          threatIds.add(threat.id);
+          zone.threats.push(threat);
         }
       }
     if (Array.isArray(source.fortifications))
       for (let i = 0; i < source.fortifications.length; i++) {
         const fortification = normalizeFortification(source.fortifications[i]);
-        if (fortification && fortification.hp > 0 && !fortificationIds.includes(fortification.id)) {
-          fortificationIds.push(fortification.id);
+        if (fortification && fortification.hp > 0 && !fortificationIds.has(fortification.id)) {
+          fortificationIds.add(fortification.id);
           zone.fortifications.push(fortification);
         }
       }
     if (Array.isArray(source.fields))
       for (let i = 0; i < source.fields.length; i++) {
         const field = normalizeField(source.fields[i]);
-        if (field && !fieldIds.includes(field.id)) {
-          fieldIds.push(field.id);
+        if (field && !fieldIds.has(field.id)) {
+          fieldIds.add(field.id);
           zone.fields.push(field);
         }
       }
     if (Array.isArray(source.buildings))
       for (let i = 0; i < source.buildings.length; i++) {
         const building = normalizeBuilding(source.buildings[i]);
-        if (building && !buildingIds.includes(building.id)) {
-          buildingIds.push(building.id);
+        if (building && !buildingIds.has(building.id)) {
+          buildingIds.add(building.id);
           zone.buildings.push(building);
         }
       }
-    const regionIds = [];
+    const regionIds = new Set();
     if (Array.isArray(source.regions))
       for (let i = 0; i < source.regions.length; i++) {
         const region = normalizeRegion(source.regions[i]);
-        if (region && !regionIds.includes(region.id)) {
-          regionIds.push(region.id);
+        if (region && !regionIds.has(region.id)) {
+          regionIds.add(region.id);
           zone.regions.push(region);
         }
       }
@@ -757,6 +845,9 @@
     zone.nextJobId = Math.max(1, intOr(source.nextJobId, 1));
     zone.nextSquadId = Math.max(1, intOr(source.nextSquadId, 1));
     zone.nextWeaponDropId = Math.max(1, intOr(source.nextWeaponDropId, 1));
+    zone.nextVehicleId = Math.max(1, intOr(source.nextVehicleId, 1));
+    zone.nextThreatId = Math.max(1, intOr(source.nextThreatId, 1));
+    zone.lastImmigrationDay = Math.max(0, intOr(source.lastImmigrationDay, 0));
     zone.nextFortificationId = Math.max(1, intOr(source.nextFortificationId, 1));
     zone.nextFieldId = Math.max(1, intOr(source.nextFieldId, 1));
     for (let i = 0; i < zone.citizens.length; i++)
@@ -767,6 +858,10 @@
       zone.nextSquadId = Math.max(zone.nextSquadId, zone.squads[i].id + 1);
     for (let i = 0; i < zone.weaponDrops.length; i++)
       zone.nextWeaponDropId = Math.max(zone.nextWeaponDropId, zone.weaponDrops[i].id + 1);
+    for (let i = 0; i < zone.vehicles.length; i++)
+      zone.nextVehicleId = Math.max(zone.nextVehicleId, zone.vehicles[i].id + 1);
+    for (let i = 0; i < zone.threats.length; i++)
+      zone.nextThreatId = Math.max(zone.nextThreatId, zone.threats[i].id + 1);
     for (let i = 0; i < zone.fortifications.length; i++)
       zone.nextFortificationId = Math.max(zone.nextFortificationId, zone.fortifications[i].id + 1);
     for (let i = 0; i < zone.fields.length; i++)
@@ -777,6 +872,7 @@
   class ZoneSave {
     constructor(storage) {
       this.storage = storage === undefined ? ZoneSave.browserStorage() : storage;
+      this.lastError = null;
     }
 
     static browserStorage() {
@@ -804,6 +900,7 @@
       if (data.v === 12) data = migrateV12(data);
       if (data.v === 13) data = migrateV13(data);
       if (data.v === 14) data = migrateV14(data);
+      if (data.v === 15) data = migrateV15(data);
       return normalize(data);
     }
 
@@ -855,6 +952,10 @@
       return migrateV14(data);
     }
 
+    static migrateV15(data) {
+      return migrateV15(data);
+    }
+
     static normalize(data) {
       return normalize(data);
     }
@@ -878,11 +979,16 @@
     }
 
     write(data) {
-      if (!this.storage) return false;
+      this.lastError = null;
+      if (!this.storage) {
+        this.lastError = "storage-unavailable";
+        return false;
+      }
       try {
         this.storage.setItem(CFG.SAVE_KEY, JSON.stringify(normalize(data)));
         return true;
-      } catch {
+      } catch (error) {
+        this.lastError = error && error.name ? error.name : "write-failed";
         return false;
       }
     }
@@ -910,6 +1016,7 @@
       this.seed = this.data.world.seed;
       this.hqId = this.zone.hqId;
       this.capture = null;
+      this.lastSaveError = null;
     }
 
     attachSeed(seed) {
@@ -985,7 +1092,9 @@
       this.data.clock.speed = this.speed;
       this.data.clock.paused = this.paused;
       this.zone.hqId = this.hqId;
-      return this.store.write(this.data);
+      const saved = this.store.write(this.data);
+      this.lastSaveError = saved ? null : this.store.lastError;
+      return saved;
     }
   }
 

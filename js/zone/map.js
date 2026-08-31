@@ -76,6 +76,8 @@
       this.minHQArea = CFG.MAP.MIN_HQ_AREA;
       this.demolitions = [];
       this.onDemolished = null;
+      this.savedById = new Map();
+      this.savedBySource = new Map();
     }
 
     prepare(world, nav) {
@@ -284,6 +286,14 @@
 
     _bindBuildings(buildings) {
       this.records.length = 0;
+      this.savedById.clear();
+      this.savedBySource.clear();
+      const savedBuildings = this.state.zone.buildings;
+      for (let i = 0; i < savedBuildings.length; i++) {
+        const saved = savedBuildings[i];
+        this.savedById.set(saved.id, saved);
+        if (saved.sourceKey) this.savedBySource.set(saved.sourceKey, saved);
+      }
       const cx = this.world.w / 2,
         cy = this.world.h / 2;
       let best = null,
@@ -361,10 +371,7 @@
     }
 
     _savedBuilding(id, sourceKey) {
-      const saved = this.state.zone.buildings;
-      for (let i = 0; i < saved.length; i++)
-        if ((sourceKey && saved[i].sourceKey === sourceKey) || saved[i].id === id) return saved[i];
-      return null;
+      return (sourceKey && this.savedBySource.get(sourceKey)) || this.savedById.get(id) || null;
     }
 
     _generateBuilding(id) {
@@ -386,6 +393,8 @@
         loot[R.AMMO] = 15 + ((rng() * 26) | 0);
         lootWeapons[CFG.WEAPON.PISTOL] = 1 + ((rng() * 2) | 0);
         lootWeapons[CFG.WEAPON.RIFLE] = rng() > 0.45 ? 1 : 0;
+        lootWeapons[CFG.WEAPON.SHOTGUN] = rng() > 0.68 ? 1 : 0;
+        lootWeapons[CFG.WEAPON.SNIPER] = rng() > 0.9 ? 1 : 0;
       } else if (poi === P.WAREHOUSE) {
         loot[R.WOOD] = 8 + ((rng() * 16) | 0);
         loot[R.METAL] = 8 + ((rng() * 14) | 0);
@@ -394,6 +403,7 @@
         loot[R.WOOD] = 5 + ((rng() * 9) | 0);
         loot[R.METAL] = 10 + ((rng() * 15) | 0);
         loot[R.AMMO] = (rng() * 7) | 0;
+        lootWeapons[CFG.WEAPON.SHOTGUN] = rng() > 0.82 ? 1 : 0;
       } else if (poi === P.LIBRARY) {
         loot[R.SCIENCE] = 8 + ((rng() * 16) | 0);
         loot[R.WOOD] = 2 + ((rng() * 6) | 0);

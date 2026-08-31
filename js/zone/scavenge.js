@@ -54,7 +54,7 @@
       record.infectedRemaining = 0;
       record.cleared = true;
       squad.state = "scavenging";
-      record.scavengeProgress += dt;
+      record.scavengeProgress += dt * this.citizens.skillMultiplier(leader, CFG.SKILL.SCAVENGE);
       let transferable = true;
       while (record.scavengeProgress >= CFG.SCAVENGE.TICK_SECONDS) {
         record.scavengeProgress -= CFG.SCAVENGE.TICK_SECONDS;
@@ -83,6 +83,7 @@
 
     _materialize(record, squadId) {
       if (record.encounterSpawned) return;
+      if (this.scenario.threats && this.scenario.threats.materialize(record, squadId)) return;
       record.encounterSpawned = true;
       const count = record.infectedRemaining;
       for (let i = 0; i < count; i++) {
@@ -118,10 +119,12 @@
         if (record.loot[id] > 0) {
           record.loot[id]--;
           squad.inventory[id]++;
+          const leader = this.citizens.at(squad.members[0]);
+          if (leader) this.citizens.addSkill(leader, CFG.SKILL.SCAVENGE, 0.25);
           if (this.onChanged) this.onChanged();
           return true;
         }
-      for (let weapon = CFG.WEAPON.RIFLE; weapon >= CFG.WEAPON.PISTOL; weapon--)
+      for (let weapon = CFG.WEAPON.SNIPER; weapon >= CFG.WEAPON.PISTOL; weapon--)
         if (record.lootWeapons[weapon] > 0) {
           if (this._equip(squad, weapon)) {
             record.lootWeapons[weapon]--;
@@ -133,23 +136,7 @@
     }
 
     _equip(squad, weapon) {
-      let index = -1;
-      for (let i = 0; i < squad.equipment.length; i++)
-        if (squad.equipment[i] < weapon) {
-          index = i;
-          break;
-        }
-      if (index < 0 && squad.equipment.length < squad.members.length)
-        index = squad.equipment.length;
-      if (index < 0) return false;
-      squad.equipment[index] = weapon;
-      const member = this.citizens.at(squad.members[index]);
-      if (member) {
-        member.weapon = weapon;
-        member.gun = true;
-        member.wep = weapon === CFG.WEAPON.RIFLE ? "rifle" : "pistol";
-      }
-      return true;
+      return Boolean(this.squads.weapons && this.squads.weapons.takeWeapon(squad, weapon));
     }
 
     autoCombat(member, squad, dt, _t, nav) {
@@ -162,11 +149,12 @@
         best = Infinity;
       const hasAmmo = squad.inventory[R.AMMO] > 0,
         weapon = hasAmmo ? member.weapon : CFG.WEAPON.MACHETE,
+        definition = this.squads.weapons.definition(weapon),
         range =
-          weapon === CFG.WEAPON.MACHETE
-            ? CFG.SQUAD.MELEE_RANGE
-            : CFG.SQUAD.FIRE_RANGE *
-              (this.squads.isGarrisoned(member) ? CFG.DEFENSE.GARRISON_RANGE_MULTIPLIER : 1),
+          definition.range *
+          (weapon !== CFG.WEAPON.MACHETE && this.squads.isGarrisoned(member)
+            ? CFG.DEFENSE.GARRISON_RANGE_MULTIPLIER
+            : 1),
         range2 = range * range;
       for (let i = 0; i < this.agents.length; i++) {
         const enemy = this.agents[i];
@@ -190,24 +178,23 @@
       if (!target || member.attackT > 0) return;
       member.a = Math.atan2(target.y - member.y, target.x - member.x);
       member.activeWeapon = weapon;
-      member.attackT =
-        weapon === CFG.WEAPON.MACHETE ? CFG.SQUAD.MELEE_SECONDS : CFG.SQUAD.FIRE_SECONDS;
-      let damage = 1;
+      member.attackT = definition.cooldown;
+      this.squads.weapons.applyAgentWeapon(member, weapon, false);
+      let damage = definition.damage;
       if (weapon !== CFG.WEAPON.MACHETE) {
         squad.inventory[R.AMMO]--;
-        damage = weapon === CFG.WEAPON.RIFLE ? 2 : 1;
+        damage = this.squads.weapons.damage(weapon, Math.sqrt(best));
         member.muzzle = 0.1;
         ZS.fx.push({ x0: member.x, y0: member.y - 7, x1: target.x, y1: target.y - 6, t: 0.1 });
-        if (ZS.sound)
-          ZS.sound.event(
-            weapon === CFG.WEAPON.RIFLE ? "shot_rifle" : "shot_smg",
-            member.x,
-            member.y,
-          );
+        if (ZS.sound) ZS.sound.event(definition.sound, member.x, member.y);
       }
+      damage *= this.citizens.skillMultiplier(member, CFG.SKILL.COMBAT);
       target.hp -= damage;
       target.flash = 0.1;
-      if (target.hp <= 0) this.killEnemy(target);
+      if (target.hp <= 0) {
+        this.citizens.addSkill(member, CFG.SKILL.COMBAT, 1);
+        this.killEnemy(target);
+      }
     }
 
     updateEnemy(enemy, dt, _t, nav) {
@@ -251,6 +238,8 @@
             9 * (this.squads.isGarrisoned(target) ? CFG.DEFENSE.GARRISON_DAMAGE_MULTIPLIER : 1);
           target.flash = 0.12;
           target.moral = Math.max(0, target.moral - 2);
+          if (!enemy.zoneRaider)
+            this.citizens.expose(target, 4 + ZS.hash(enemy.seed + target.cid) * 8);
           if (target.hp <= 0) this.citizens.kill(target);
         }
         return;
@@ -264,6 +253,10 @@
       if (!enemy || enemy.dead) return;
       if (enemy.zoneHorde && this.scenario.defense) {
         this.scenario.defense.killEnemy(enemy);
+        return;
+      }
+      if (Number.isInteger(enemy.zoneThreatId) && this.scenario.threats) {
+        this.scenario.threats.killEnemy(enemy);
         return;
       }
       enemy.dead = true;
