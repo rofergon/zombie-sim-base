@@ -268,6 +268,15 @@
     }
 
     _targetBuilding(enemy) {
+      if (Number.isInteger(enemy.zonePressureTargetId)) {
+        const cached =
+          enemy.zonePressureTargetKind === "field" && this.agriculture
+            ? this.agriculture.at(enemy.zonePressureTargetId)
+            : this.map.at(enemy.zonePressureTargetId);
+        if (cached && cached.hp > 0) return cached;
+        enemy.zonePressureTargetId = null;
+        enemy.zonePressureTargetKind = null;
+      }
       let target = this.map.hq,
         best = target ? Math.hypot(target.cx - enemy.x, target.cy - enemy.y) : Infinity;
       for (let i = 0; i < this.map.records.length; i++) {
@@ -289,6 +298,10 @@
             target = field;
           }
         }
+      if (target) {
+        enemy.zonePressureTargetKind = target.shape ? "building" : "field";
+        enemy.zonePressureTargetId = target.id;
+      }
       return target;
     }
 

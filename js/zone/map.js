@@ -51,6 +51,12 @@
     return total;
   }
 
+  function sameResources(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if ((a[i] || 0) !== (b[i] || 0)) return false;
+    return true;
+  }
+
   function polygonArea(points) {
     let area = 0;
     for (let i = 0, j = points.length - 1; i < points.length; j = i++)
@@ -579,6 +585,7 @@
       const out = [];
       for (let i = 0; i < this.records.length; i++) {
         const record = this.records[i];
+        if (!this._needsPersistence(record)) continue;
         out.push({
           id: record.id,
           sourceKey: record.sourceKey,
@@ -602,6 +609,33 @@
         });
       }
       this.state.zone.buildings = out;
+    }
+
+    _needsPersistence(record) {
+      if (
+        record.use !== USE.ABANDONED ||
+        record.revealed ||
+        record.cleared ||
+        record.looted ||
+        record.scavengeProgress > 0 ||
+        record.demolished ||
+        record.hp > 0 ||
+        record.maxHP > 0 ||
+        !record.active ||
+        record.productionT > 0 ||
+        record.recipe !== CFG.RECIPE.MEAT ||
+        record.fertilized
+      )
+        return true;
+      const generated = this._generateBuilding(record.id),
+        poi = record.shape.sourcePoi || generated.poi;
+      return (
+        record.poi !== poi ||
+        record.infectedRemaining !== generated.infectedRemaining ||
+        !sameResources(record.salvage, generated.salvage) ||
+        !sameResources(record.loot, generated.loot) ||
+        !sameResources(record.lootWeapons, generated.lootWeapons)
+      );
     }
 
     _makeFlag(record) {

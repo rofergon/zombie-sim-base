@@ -1,7 +1,8 @@
-/* Sound: sketch-style WebAudio synth plus a small vendored CC0 sample
-   library (file:// safe). The scenario fires events and describes its
-   camera soundscape; this layer owns loading, pooling, spatialization and
-   rate limits. Audio stays silent until a user gesture unlocks it. */
+/* Sound: sketch-style WebAudio synth, a procedural score and a small vendored
+   CC0 sample library (file:// safe). The scenario fires events and describes
+   its camera soundscape/score; this layer owns synthesis, loading, pooling,
+   spatialization and rate limits. Audio stays silent until a user gesture
+   unlocks it. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -35,11 +36,180 @@
   const ENV_LAYERS = 2;
   const ENV_EMITTERS = 6;
   const SAMPLE_VOICES = 10;
+  // Eight steps are one 4/4 bar. These compact note maps make a restrained,
+  // hand-made score without external music files. Scenario packs only choose
+  // a cue and intensity; the audio layer keeps harmony and transitions intact.
+  const SCORES = Object.freeze({
+    wilderness: Object.freeze({
+      bpm: 54,
+      root: 45,
+      chords: [
+        [0, 3, 7],
+        [0, 5, 8],
+        [-2, 3, 7],
+        [-5, 0, 3],
+      ],
+      bass: [0, null, null, null, 7, null, null, null],
+      lead: [null, 12, null, null, 10, null, 7, null],
+      padGain: 0.034,
+      bassGain: 0.032,
+      leadGain: 0.025,
+      bassAt: 0.34,
+      leadAt: 0.52,
+      drums: 0,
+    }),
+    dawn: Object.freeze({
+      bpm: 62,
+      root: 50,
+      chords: [
+        [0, 4, 7, 11],
+        [-5, 0, 4, 7],
+        [-3, 2, 5, 9],
+        [-5, 0, 4, 9],
+      ],
+      bass: [0, null, 7, null, 5, null, 7, null],
+      lead: [12, null, 14, null, 16, 14, 11, null],
+      padGain: 0.038,
+      bassGain: 0.03,
+      leadGain: 0.029,
+      bassAt: 0.3,
+      leadAt: 0.42,
+      drums: 0,
+    }),
+    settlement: Object.freeze({
+      bpm: 68,
+      root: 50,
+      chords: [
+        [0, 3, 7, 14],
+        [5, 9, 12, 16],
+        [3, 7, 10, 14],
+        [7, 10, 14, 17],
+      ],
+      bass: [0, null, 7, null, 5, null, 3, 7],
+      lead: [12, null, 14, 15, null, 14, 10, null],
+      padGain: 0.033,
+      bassGain: 0.032,
+      leadGain: 0.027,
+      bassAt: 0.34,
+      leadAt: 0.48,
+      drums: 0,
+    }),
+    dusk: Object.freeze({
+      bpm: 72,
+      root: 45,
+      chords: [
+        [0, 3, 7, 10],
+        [-2, 3, 7, 10],
+        [1, 5, 8, 12],
+        [0, 3, 6, 10],
+      ],
+      bass: [0, null, 0, null, 7, null, 3, null],
+      lead: [12, null, 10, null, 8, null, 7, null],
+      padGain: 0.035,
+      bassGain: 0.037,
+      leadGain: 0.025,
+      bassAt: 0.28,
+      leadAt: 0.5,
+      drums: 0.012,
+    }),
+    warning: Object.freeze({
+      bpm: 86,
+      root: 40,
+      chords: [
+        [0, 1, 7],
+        [0, 3, 6],
+        [1, 5, 8],
+        [0, 1, 6],
+      ],
+      bass: [0, null, 0, 1, 0, null, 3, 1],
+      lead: [12, null, 13, null, 12, 15, 13, null],
+      padGain: 0.03,
+      bassGain: 0.044,
+      leadGain: 0.025,
+      bassAt: 0.18,
+      leadAt: 0.55,
+      drums: 0.034,
+    }),
+    combat: Object.freeze({
+      bpm: 108,
+      root: 38,
+      chords: [
+        [0, 1, 7],
+        [0, 3, 6],
+        [-1, 2, 7],
+        [0, 1, 6],
+      ],
+      bass: [0, 0, 1, 0, 0, 3, 1, 0],
+      lead: [12, null, 13, 15, null, 13, 12, 18],
+      padGain: 0.027,
+      bassGain: 0.052,
+      leadGain: 0.029,
+      bassAt: 0.1,
+      leadAt: 0.56,
+      drums: 0.052,
+    }),
+    respite: Object.freeze({
+      bpm: 58,
+      root: 50,
+      chords: [
+        [0, 4, 7, 11],
+        [-3, 2, 5, 9],
+        [-5, 0, 4, 7],
+        [0, 4, 7, 14],
+      ],
+      bass: [0, null, null, null, 7, null, null, null],
+      lead: [12, null, 16, null, 19, null, 14, null],
+      padGain: 0.043,
+      bassGain: 0.028,
+      leadGain: 0.033,
+      bassAt: 0.26,
+      leadAt: 0.36,
+      drums: 0,
+    }),
+    loss: Object.freeze({
+      bpm: 48,
+      root: 45,
+      chords: [
+        [0, 3, 7],
+        [-2, 1, 5],
+        [-4, 0, 3],
+        [-5, -2, 2],
+      ],
+      bass: [0, null, null, null, -5, null, null, null],
+      lead: [12, null, 10, null, 8, null, 7, null],
+      padGain: 0.04,
+      bassGain: 0.034,
+      leadGain: 0.022,
+      bassAt: 0.24,
+      leadAt: 0.5,
+      drums: 0,
+    }),
+    ending: Object.freeze({
+      bpm: 66,
+      root: 50,
+      chords: [
+        [0, 4, 7, 11],
+        [5, 9, 12, 16],
+        [7, 11, 14, 18],
+        [0, 4, 7, 14],
+      ],
+      bass: [0, null, 7, null, 5, null, 7, null],
+      lead: [12, 14, 16, null, 19, 16, 14, 23],
+      padGain: 0.046,
+      bassGain: 0.033,
+      leadGain: 0.036,
+      bassAt: 0.2,
+      leadAt: 0.3,
+      drums: 0.01,
+    }),
+  });
   const scene = {
     x: 0,
     y: 0,
     viewRadius: 700,
     count: 0,
+    scoreKey: null,
+    scoreIntensity: 0,
     layerKeys: Array.from({ length: ENV_LAYERS }, () => null),
     layerGains: new Float32Array(ENV_LAYERS),
     emitters: Array.from({ length: ENV_EMITTERS }, () => ({
@@ -59,6 +229,8 @@
         Math.max(0.1, cam.zoom) /
         2;
       this.count = 0;
+      this.scoreKey = null;
+      this.scoreIntensity = 0;
       for (let i = 0; i < ENV_LAYERS; i++) {
         this.layerKeys[i] = null;
         this.layerGains[i] = 0;
@@ -68,6 +240,11 @@
       if (index < 0 || index >= ENV_LAYERS || !MEDIA[key]) return;
       this.layerKeys[index] = key;
       this.layerGains[index] = Math.max(0, gain || 0);
+    },
+    score(key, intensity) {
+      if (!SCORES[key]) return;
+      this.scoreKey = key;
+      this.scoreIntensity = Math.max(0, Math.min(1, intensity || 0));
     },
     emitter(id, key, x, y, gain, range) {
       if (!MEDIA[key] || !Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -98,13 +275,22 @@
     master = null,
     nbuf = null,
     ambientBus = null,
-    sampleBus = null;
+    sampleBus = null,
+    musicBus = null;
   let voices = 0; // live source nodes (cap: keep the mix breathable)
   let curPan = 0; // scene position -> stereo pan (set by event/tick)
   let mediaReady = false;
   let mediaVoice = 0;
   let emitterEpoch = 0;
   let sceneT = 0;
+  let scoreTarget = null;
+  let scoreCue = null;
+  let scoreTargetIntensity = 0;
+  let scoreIntensity = 0;
+  let scoreStep = 0;
+  let scoreNext = 0;
+  let scoreVoices = 0;
+  let musicDuckUntil = 0;
   const ambientLayers = [];
   const emitterSlots = [];
   const sampleSlots = [];
@@ -161,6 +347,9 @@
         sampleBus = ac.createGain();
         sampleBus.gain.value = 0.78;
         sampleBus.connect(master);
+        musicBus = ac.createGain();
+        musicBus.gain.value = 0.58;
+        musicBus.connect(master);
         ensureMedia();
       } catch {
         ac = null;
@@ -323,12 +512,155 @@
       for (let i = 0; i < ENV_LAYERS; i++) setLayer(i, null, 0);
       scene.count = 0;
       updateEmitters();
+      setScore(null, 0);
       return;
     }
     scene.reset(cam);
     sc.soundscape(scene);
     for (let i = 0; i < ENV_LAYERS; i++) setLayer(i, scene.layerKeys[i], scene.layerGains[i]);
     updateEmitters();
+    setScore(scene.scoreKey, scene.scoreIntensity);
+  }
+
+  function setScore(key, intensity) {
+    scoreTarget = SCORES[key] ? key : null;
+    scoreTargetIntensity = scoreTarget ? Math.max(0, Math.min(1, intensity || 0)) : 0;
+  }
+
+  function midiFrequency(note) {
+    return 440 * Math.pow(2, (note - 69) / 12);
+  }
+
+  function scoreTone(at, note, duration, gain, kind, panValue) {
+    if (!musicBus || gain < 0.0005 || scoreVoices >= 40) return;
+    scoreVoices++;
+    const oscillator = ac.createOscillator(),
+      filter = ac.createBiquadFilter(),
+      envelope = ac.createGain(),
+      panner = typeof ac.createStereoPanner === "function" ? ac.createStereoPanner() : null,
+      end = at + duration,
+      pad = kind === "pad",
+      bass = kind === "bass",
+      attack = pad ? Math.min(0.42, duration * 0.22) : bass ? 0.018 : 0.012;
+    oscillator.type = pad ? "triangle" : bass ? "sine" : "triangle";
+    oscillator.frequency.setValueAtTime(midiFrequency(note), at);
+    if (!bass) oscillator.detune.value = ((scoreStep * 13 + note * 7) % 9) - 4;
+    filter.type = "lowpass";
+    filter.frequency.value = pad ? 1250 : bass ? 540 : 2400;
+    filter.Q.value = pad ? 0.8 : 1.2;
+    envelope.gain.setValueAtTime(0.0001, at);
+    envelope.gain.linearRampToValueAtTime(gain, at + attack);
+    if (pad)
+      envelope.gain.setValueAtTime(gain * 0.82, Math.max(at + attack, end - duration * 0.28));
+    envelope.gain.exponentialRampToValueAtTime(0.0001, end);
+    oscillator.connect(filter).connect(envelope);
+    if (panner) {
+      panner.pan.value = Math.max(-0.7, Math.min(0.7, panValue || 0));
+      envelope.connect(panner).connect(musicBus);
+    } else envelope.connect(musicBus);
+    oscillator.onended = () => {
+      scoreVoices--;
+      oscillator.disconnect();
+      filter.disconnect();
+      envelope.disconnect();
+      if (panner) panner.disconnect();
+    };
+    oscillator.start(at);
+    oscillator.stop(end + 0.04);
+  }
+
+  function scoreNoise(at, duration, gain, high) {
+    if (!musicBus || gain < 0.0005 || scoreVoices >= 40) return;
+    scoreVoices++;
+    const source = ac.createBufferSource(),
+      filter = ac.createBiquadFilter(),
+      envelope = ac.createGain(),
+      end = at + duration;
+    source.buffer = noise();
+    filter.type = high ? "highpass" : "bandpass";
+    filter.frequency.value = high ? 4200 : 950;
+    filter.Q.value = high ? 0.6 : 1.4;
+    envelope.gain.setValueAtTime(0.0001, at);
+    envelope.gain.exponentialRampToValueAtTime(gain, at + 0.008);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, end);
+    source.connect(filter).connect(envelope).connect(musicBus);
+    source.onended = () => {
+      scoreVoices--;
+      source.disconnect();
+      filter.disconnect();
+      envelope.disconnect();
+    };
+    source.start(at);
+    source.stop(end + 0.02);
+  }
+
+  function scheduleScoreStep(cue, at, intensity) {
+    const score = SCORES[cue],
+      local = scoreStep % 8,
+      bar = Math.floor(scoreStep / 8),
+      stepDuration = 30 / score.bpm,
+      strength = 0.48 + intensity * 0.52;
+    if (local === 0) {
+      const chord = score.chords[bar % score.chords.length];
+      for (let i = 0; i < chord.length; i++)
+        scoreTone(
+          at,
+          score.root + 12 + chord[i],
+          stepDuration * 7.7,
+          score.padGain * strength,
+          "pad",
+          (i / Math.max(1, chord.length - 1) - 0.5) * 0.72,
+        );
+    }
+    const bassNote = score.bass[local];
+    if (bassNote !== null && intensity >= score.bassAt)
+      scoreTone(
+        at,
+        score.root + bassNote,
+        stepDuration * (cue === "combat" ? 0.66 : 1.45),
+        score.bassGain * strength,
+        "bass",
+        local % 4 === 0 ? -0.08 : 0.08,
+      );
+    const leadNote = score.lead[local];
+    if (leadNote !== null && intensity >= score.leadAt)
+      scoreTone(
+        at,
+        score.root + leadNote,
+        stepDuration * (cue === "ending" ? 1.5 : 0.78),
+        score.leadGain * strength,
+        "lead",
+        local % 2 ? 0.32 : -0.32,
+      );
+    if (score.drums && intensity >= 0.48) {
+      if (local === 0 || local === 4)
+        scoreTone(at, score.root - 12, stepDuration * 0.38, score.drums * strength, "bass", 0);
+      if ((local === 2 || local === 6) && intensity >= 0.62)
+        scoreNoise(at, stepDuration * 0.2, score.drums * 0.5 * strength, false);
+      if (intensity >= 0.78 && local % 2 === 1)
+        scoreNoise(at, stepDuration * 0.12, score.drums * 0.28 * strength, true);
+    }
+  }
+
+  function tickScore(dt) {
+    if (!musicBus) return;
+    const now = ac.currentTime,
+      follow =
+        1 - Math.exp(-Math.max(0, dt) * (scoreTargetIntensity > scoreIntensity ? 2.2 : 1.25));
+    scoreIntensity += (scoreTargetIntensity - scoreIntensity) * follow;
+    setParam(musicBus.gain, now < musicDuckUntil ? 0.36 : 0.58, 0.08);
+    if (scoreTarget !== scoreCue) {
+      scoreCue = scoreTarget;
+      scoreStep = 0;
+      scoreNext = now + 0.045;
+    }
+    if (!scoreCue || scoreIntensity < 0.008) return;
+    if (scoreNext < now - 0.5) scoreNext = now + 0.045;
+    while (scoreNext < now + 0.22) {
+      scheduleScoreStep(scoreCue, scoreNext, scoreIntensity);
+      scoreNext += 30 / SCORES[scoreCue].bpm;
+      scoreStep++;
+    }
   }
 
   // 2s of reusable white noise (the boom tail needs it)
@@ -1099,6 +1431,9 @@
     const now = performance.now() / 1000;
     if (last[name] && now < last[name]) return;
     last[name] = now + (CD[name] || 0.15);
+    if (name === "boom" || name === "horn") musicDuckUntil = ac.currentTime + 0.7;
+    else if (name.startsWith("shot_") || name === "turret")
+      musicDuckUntil = Math.max(musicDuckUntil, ac.currentTime + 0.12);
     switch (name) {
       case "ui_click":
         sampled("ui_click", NaN, NaN, 1, 0.98 + Math.random() * 0.04);
@@ -1261,6 +1596,7 @@
       sceneT = 0.2;
       updateSoundscape(sc);
     }
+    tickScore(dt);
     if (!sc || !sc.fx) return;
     crackleT -= dt;
     if (crackleT > 0) return;
@@ -1291,6 +1627,13 @@
     return {
       context: ac ? ac.state : "none",
       mediaReady,
+      score: {
+        cue: scoreCue,
+        target: scoreTarget,
+        intensity: scoreIntensity,
+        step: scoreStep,
+        voices: scoreVoices,
+      },
       layers: ambientLayers.map((layer) => {
         const slot = layer.tracks[layer.active];
         return {

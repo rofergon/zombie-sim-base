@@ -26,6 +26,7 @@
     [CFG.WORKER_STATE.RESTING]: "descansando",
   });
   const PRIORITY_LABEL = Object.freeze(["detenida", "mínima", "baja", "media", "alta", "máxima"]);
+  const TRAIT_LABEL = Object.freeze(["sin rasgo", "tirador", "resistente", "manitas"]);
   const LABOR_LABEL = Object.freeze([
     "Construcción",
     "Desguace",
@@ -1127,6 +1128,8 @@
           state +
           " · " +
           specialty +
+          " · " +
+          TRAIT_LABEL[citizen.trait] +
           " · llegó día " +
           citizen.arrivalDay +
           '</small></span><span class="zone-citizen-vitals"><i><em style="width:' +

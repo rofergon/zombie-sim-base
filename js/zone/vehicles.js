@@ -166,6 +166,7 @@
 
     expeditionVehicle(squad) {
       const vehicle = squad && this.at(squad.vehicleId);
+      if (vehicle) this._refuelAtHQ(squad, vehicle);
       return vehicle && vehicle.recovered && vehicle.hp > 0 && vehicle.fuel >= 2 ? vehicle : null;
     }
 

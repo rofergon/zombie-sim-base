@@ -244,13 +244,7 @@
       this.squads.connectVehicles(this.vehicles);
       this.squads.connectLogistics(this.logistics);
       this.vehicles.connect(this.squads, this.citizens, () => this._markUI());
-      this.threats.connect(
-        this.citizens,
-        this.squads,
-        this,
-        this.agents,
-        () => this._markUI(),
-      );
+      this.threats.connect(this.citizens, this.squads, this, this.agents, () => this._markUI());
       this.scavenge.connect(this.citizens, this.squads, this, this.agents, () => this._markUI());
       this.tasks.connectAdaptations(this.adaptations);
       this.tasks.connectAgriculture(this.agriculture);
@@ -280,12 +274,7 @@
         this._refreshSettlement();
       });
       this.fortifications.connect(this, this.agents, () => this._markUI());
-      this.regions.connect(
-        this.squads,
-        this.citizens,
-        this.vehicles,
-        () => this._markUI(),
-      );
+      this.regions.connect(this.squads, this.citizens, this.vehicles, () => this._markUI());
       this.citizens.connectCampaign(this.campaign);
       this.campaign.connect(this.citizens, this.adaptations, this.defense, this.regions, this, () =>
         this._markUI(),
@@ -423,6 +412,48 @@
       c.fillRect(0, 0, world.w, world.h);
     }
 
+    _score(scene, phase) {
+      if (typeof scene.score !== "function") return;
+      if (this.campaign.data.endingUnread) {
+        scene.score("ending", 1);
+        return;
+      }
+      const report = this.defense.data.report;
+      if (report) {
+        scene.score(report.breached ? "loss" : "respite", report.breached ? 0.82 : 0.9);
+        return;
+      }
+      if (!this.map.hq) {
+        scene.score("wilderness", 0.34);
+        return;
+      }
+      if (this.defense.data.active) {
+        const remaining = this.defense.spawnRemaining + this.defense.living(),
+          expected = Math.max(16, CFG.HORDE.BASE_COUNT + this.state.day * CFG.HORDE.PER_DAY),
+          hqDamage = Math.max(0, 1 - this.map.hq.hp / Math.max(1, this.map.hq.maxHP)),
+          pressure = Math.min(1, remaining / expected);
+        scene.score("combat", Math.min(1, 0.7 + pressure * 0.2 + hqDamage * 0.18));
+        return;
+      }
+      let encounters = 0;
+      for (let i = 0; i < this.squads.list.length; i++)
+        if (this.squads.list[i].state === "encounter") encounters++;
+      if (encounters) {
+        scene.score("combat", Math.min(0.88, 0.58 + encounters * 0.1));
+        return;
+      }
+      const warning = this.defense.warning();
+      if (warning.active) {
+        const approach = 1 - warning.minutes / Math.max(1, CFG.DEFENSE.ALERT_MINUTES);
+        scene.score("warning", Math.min(0.94, 0.5 + approach * 0.44));
+        return;
+      }
+      if (phase === "night") scene.score("dusk", 0.62);
+      else if (phase === "dusk") scene.score("dusk", 0.5);
+      else if (phase === "dawn") scene.score("dawn", 0.48);
+      else scene.score("settlement", 0.46);
+    }
+
     soundscape(scene) {
       if (!this.world || !this.nav || !this.map) return;
       const phase = this.state.phase(),
@@ -446,6 +477,7 @@
       else if (phase === "night") scene.layer(1, "crickets", forest ? 0.88 : 0.58);
       else if (phase === "dusk") scene.layer(1, "crickets", forest ? 0.52 : 0.32);
       else scene.layer(1, "birds", forest ? 0.72 : phase === "dawn" ? 0.44 : 0.26);
+      this._score(scene, phase);
 
       const records = this.map.records;
       for (let i = 0; i < records.length; i++) {
@@ -1579,26 +1611,26 @@
               : "Orden de recuperar el vehículo emitida."
             : count + " patrullas intentarán recuperar el vehículo."
           : drop
-          ? count === 1
-            ? "Orden de recuperar el equipo emitida."
-            : count + " escuadras se dirigen al equipo abandonado."
-          : building
-            ? building === this.map.hq ||
-              building.looted ||
-              building.use !== CFG.BUILDING_USE.ABANDONED
-              ? count === 1
-                ? "Orden de guarnición emitida."
-                : count + " escuadras enviadas a guarnecer."
-              : count === 1
-                ? "Orden de saqueo emitida."
-                : count + " escuadras enviadas a saquear."
-            : append
-              ? count === 1
-                ? "Orden puesta en cola."
-                : "Órdenes en cola para " + count + " escuadras."
-              : count === 1
-                ? "Orden de movimiento emitida."
-                : count + " escuadras en movimiento.",
+            ? count === 1
+              ? "Orden de recuperar el equipo emitida."
+              : count + " escuadras se dirigen al equipo abandonado."
+            : building
+              ? building === this.map.hq ||
+                building.looted ||
+                building.use !== CFG.BUILDING_USE.ABANDONED
+                ? count === 1
+                  ? "Orden de guarnición emitida."
+                  : count + " escuadras enviadas a guarnecer."
+                : count === 1
+                  ? "Orden de saqueo emitida."
+                  : count + " escuadras enviadas a saquear."
+              : append
+                ? count === 1
+                  ? "Orden puesta en cola."
+                  : "Órdenes en cola para " + count + " escuadras."
+                : count === 1
+                  ? "Orden de movimiento emitida."
+                  : count + " escuadras en movimiento.",
       );
       this._markUI();
       return true;
@@ -2026,12 +2058,12 @@
             ? "Clic der. usar vehículo · combustible " + vehicle.fuel.toFixed(1)
             : "Clic der. recuperar vehículo · combustible " + vehicle.fuel.toFixed(1)
           : drop
-          ? "Clic der. recuperar armas y suministros · Shift pone en cola"
-          : building
-            ? building === this.map.hq || building.looted
-              ? "Clic der. guarnecer · Shift pone en cola"
-              : "Clic der. saquear · Shift pone en cola"
-            : "Clic der. mover · Shift pone en cola";
+            ? "Clic der. recuperar armas y suministros · Shift pone en cola"
+            : building
+              ? building === this.map.hq || building.looted
+                ? "Clic der. guarnecer · Shift pone en cola"
+                : "Clic der. saquear · Shift pone en cola"
+              : "Clic der. mover · Shift pone en cola";
       else if (vehicle)
         hint =
           (vehicle.recovered ? "Vehículo recuperado" : "Vehículo abandonado") +

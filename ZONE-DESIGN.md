@@ -243,6 +243,70 @@ The existing pages remain independent regression targets:
   migration maps the previous four numeric priority levels to their matching
   meanings in the six-level scale.
 
+### Phase 12 — IFZ-style weapons and battlefield recovery
+
+- Every squad member has one persistent weapon slot. Machetes remain the free
+  no-ammunition fallback; pistols, assault rifles, shotguns and sniper rifles
+  use stable numeric IDs, distinct range, cadence and damage, including shotgun
+  falloff.
+- Finite weapons found while scavenging either improve the weakest compatible
+  loadout or occupy bounded squad cargo. Returning to HQ deposits spare weapons
+  in a persistent armory, where individual members can change equipment.
+- A dead member leaves their firearm on the map. When the last member of a
+  squad dies, its remaining ammunition, medicine, resources and spare weapons
+  join the same persistent cache instead of returning magically to settlement
+  stock.
+- Dropped equipment is rendered with boiling sketch primitives, participates in
+  contextual right-click orders and can be recovered by any squad with free
+  capacity. Partial pickups leave the remaining cache in place across save/load.
+- The armory and loot panels use an original transparent paper-sketch weapon
+  atlas. Agent rendering still calls the frozen `ScenarioZombie.draw`; the new
+  system only selects its existing pistol/rifle visual flags.
+- Save v15 adds the armory, spare squad weapons, pickup orders and persistent
+  weapon drops through a pure v14 → v15 migration. The current v16 envelope
+  preserves those fields while adding the later logistics campaign state.
+
+### Phase 13 — dynamic soundscape and score
+
+- The camera mixes file-safe environmental recordings for wind, wildlife,
+  water and working settlement buildings with spatial falloff and panning.
+- A procedural WebAudio score follows the campaign rather than simulation
+  speed: wilderness, dawn, settlement, dusk, horde warning, combat, respite,
+  loss and Project Aurora ending each have their own harmony, tempo and motif.
+- Threat pressure raises the score in layers from pads to bass, melody and
+  percussion. Gunfire and explosions briefly duck the music so combat cues
+  remain clear; report cards keep their score while the simulation is paused.
+- The score uses the shared sound preference, needs no music download and
+  remains available when `zone.html` is opened directly through `file://`.
+
+### Phase 14 — mobility, territorial threats and living population
+
+- Cars, vans and trucks are finite persistent map objects. A squad reaches one
+  through the normal contextual-order queue, recovers it and keeps it assigned;
+  fuel controls the movement bonus while vehicle condition and cargo capacity
+  survive save/load.
+- Regional expeditions reserve one specific squad instead of accepting a squad
+  count. Its members disappear from selection and local defense, vehicle fuel
+  shortens the trip, sector threat can cause wounds, infection and vehicle
+  damage, and the bounded reward returns in the squad inventory for a physical
+  HQ deposit.
+- Deterministically placed infected lairs and a raider hideout occupy real
+  buildings. Patrol proximity reveals them; their defenders materialize once,
+  finite strength persists, lairs add night pressure and surviving raiders can
+  intercept settlement supplies until their site is cleared.
+- Storage capacity is enforced. Extraction workers carry cargo to the nearest
+  intact warehouse or HQ, keep overflow instead of deleting it, and production
+  pauses before its output could exceed capacity. Warehouses therefore change
+  both usable stock volume and the physical return route.
+- Citizens persist infection exposure, three experience-driven skill tracks and
+  deterministic traits. Combat, scavenging and labor improve through use;
+  infection responds to medical care and Project Aurora. Every three days,
+  adequate housing, food and morale can attract new inhabitants through the
+  existing recruitment path.
+- Save normalization and building restoration use indexed duplicate/lookups on
+  large maps. A localStorage quota or availability failure is exposed to the
+  player instead of being silently treated as a successful autosave.
+
 ## Script ownership
 
 All scripts are classic IIFEs on `window.ZS`; `zone.html` defines the load
@@ -258,9 +322,13 @@ order and remains usable through `file://`.
 | `js/zone/orders.js` | Input-created agent command queues |
 | `js/zone/citizens.js` | Citizen identity, needs, roles and persistence snapshots |
 | `js/zone/tasks.js` | Event-driven job board, workforce priorities and worker state machines |
+| `js/zone/weapons.js` | Weapon definitions, armory, equipment, persistent drops and pickup |
 | `js/zone/gathering.js` | Territorial wood/metal nodes, work-area markers, collection and persistence |
 | `js/zone/squads.js` | Shared squad orders, formation trail, patrol and inventory |
 | `js/zone/scavenge.js` | Seeded loot, reveal, encounters and limited combat |
+| `js/zone/logistics.js` | Settlement storage capacity, deposits and delivery targets |
+| `js/zone/vehicles.js` | Recoverable vehicles, fuel, boarding and expedition modifiers |
+| `js/zone/threats.js` | Persistent local lairs, raiders and their campaign pressure |
 | `js/zone/adaptations.js` | Building costs, research, power, production and repairs |
 | `js/zone/agriculture.js` | Field placement, seasons, crop recipes, persistence and sketch rendering |
 | `js/zone/fortifications.js` | Placement, navigation ownership, persistence and automated defenses |
@@ -313,12 +381,19 @@ sequence.
 13. Assignment honors category and local caps. Higher-priority work may only
     preempt a lower-priority worker who is not carrying resources; stalled
     production never reserves labor.
+14. Firearms are conserved across building loot, equipped slots, squad cargo,
+    the HQ armory and map drops. A casualty never duplicates or silently
+    returns equipment to stock.
+15. Storage overflow stays on its worker or squad. Production checks output
+    space before consuming inputs, and a warehouse is a real delivery target.
+16. An expedition owns one squad for its full duration. Away members cannot be
+    selected, recalled into a night defense or updated as local agents.
 
-## Save v14
+## Save v16
 
 ```text
 {
-  v: 14,
+  v: 16,
   world: {
     seed, configured, source, size,
     mapPackId, mapHash, name, center,
@@ -326,11 +401,14 @@ sequence.
   },
   clock: { day, minute, speed, paused },
   zone: {
-    hqId, initialized, stock,
+    hqId, initialized, stock, armory,
     nextCitizenId, citizens,
     nextJobId, jobs, harvestedTrees,
     workPolicy: { priorities, max },
     nextSquadId, squads,
+    nextWeaponDropId, weaponDrops,
+    nextVehicleId, vehicles,
+    nextThreatId, threats, lastImmigrationDay,
     nextFortificationId, fortifications,
     nextFieldId, fields,
     buildings,
@@ -351,15 +429,15 @@ sequence.
 Gathering jobs add `{ targetKind: "resource", resource, bounds, nodeIds, total }`
 to the shared job record.
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV13` are pure/testable steps. A v3
+`ZoneSave.migrateV3` through `ZoneSave.migrateV15` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
 ## Later-phase boundary
 
-Vehicles remain out of scope. Later work may deepen special-infected behaviors,
-add moving regional squads and faction settlements, and introduce renewable
-geographic data without moving scenario rules into the generic core.
+Later work may deepen special-infected and vehicle behaviors, add moving
+regional squads and faction settlements, and introduce renewable geographic
+data without moving scenario rules into the generic core.
 
 ## Verification
 
@@ -374,19 +452,25 @@ keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
 assignment, six-level workforce policy, automatic preemption, category caps,
 blocked production, salvage/conservation and dusk. `tests/zone-gathering.js` covers
 territorial selection, wood/metal collection, staffing, overlap rejection,
-conservation and the v14 round-trip. `tests/zone-squads.js` covers seeded loot,
-formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v14 migration, construction
+conservation and the v16 round-trip. `tests/zone-squads.js` covers seeded loot,
+formation/patrol, encounter combat, weapon slots, death drops, contextual
+pickup, armory equipment, pause, inventory return/resume and save/load.
+`tests/zone-colony.js` covers v5 → v16 migration, construction
 conservation, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
 suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
 polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
 selector, offline procedural fallback, the 5×5 preset and connected expeditions.
-`tests/zone-campaign.js` covers v9 → v14, the radio choice UI, named recruitment,
+`tests/zone-campaign.js` covers v9 → v16, the radio choice UI, named recruitment,
 reputation, daily trade, laws, all cure stages, the final-night multiplier,
 epilogue and save/load persistence.
 `tests/zone-research.js` covers researcher assignment, linear staffing speed,
 passive science, start blockers and in-progress save/load. `tests/zone-farming.js`
 covers the fertilized field → barn → meat cookhouse chain, greenhouse winter
-immunity, finished-ration hunger, staffing and the v14 field/building round-trip.
+immunity, finished-ration hunger, staffing and the v16 field/building round-trip.
+`tests/zone-evolution.js` covers the v15 → v16 migration, enforced storage,
+warehouse destinations, recoverable vehicles, occupied/risky expeditions,
+persistent threat clearance, infection, skills, immigration and surfaced save
+failures. `tests/zone-cycle.js` runs an accelerated but natural dusk → horde
+spawn/navigation/combat → dawn loop without killing enemies through test hooks.

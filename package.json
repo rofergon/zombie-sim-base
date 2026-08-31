@@ -17,7 +17,9 @@
     "test:zone-farming": "node tests/zone-farming.js",
     "test:zone-campaign": "node tests/zone-campaign.js",
     "test:zone-geo": "node tests/zone-geo.js",
-    "test": "npm run test:menu && npm run test:smoke && npm run test:sound && npm run test:zone && npm run test:zone-workers && npm run test:zone-gathering && npm run test:zone-squads && npm run test:zone-colony && npm run test:zone-research && npm run test:zone-farming && npm run test:zone-campaign && npm run test:zone-geo"
+    "test:zone-evolution": "node tests/zone-evolution.js",
+    "test:zone-cycle": "node tests/zone-cycle.js",
+    "test": "npm run test:menu && npm run test:smoke && npm run test:sound && npm run test:zone && npm run test:zone-workers && npm run test:zone-gathering && npm run test:zone-squads && npm run test:zone-colony && npm run test:zone-research && npm run test:zone-farming && npm run test:zone-campaign && npm run test:zone-geo && npm run test:zone-evolution && npm run test:zone-cycle"
   },
   "devDependencies": {
     "oxfmt": "^0.63.0",

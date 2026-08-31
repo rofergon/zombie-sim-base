@@ -388,7 +388,13 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         member.vx = member.vy = 0;
         member.bld = record.id;
       }
-      return { revealed: record.revealed, remaining: record.infectedRemaining, before, materialized, after };
+      return {
+        revealed: record.revealed,
+        remaining: record.infectedRemaining,
+        before,
+        materialized,
+        after,
+      };
     }, encounter);
     assert.equal(revealed.revealed, true);
     assert.ok(revealed.before === 0 || revealed.before === revealed.remaining);
