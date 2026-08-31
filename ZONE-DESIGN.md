@@ -221,6 +221,28 @@ The existing pages remain independent regression targets:
   conservation continues through the shared worker-cargo and settlement-stock
   invariant.
 
+### Phase 11 — IFZ-style workforce priorities
+
+- The Habitantes panel exposes every work category with the current IFZ-style
+  six levels: disabled, lowest, low, medium, high and highest. A global change
+  updates all active jobs in that category and becomes the default for future
+  jobs; an individual building or work area can still override it.
+- Every category has a persistent maximum-worker limit plus a `MAX` setting.
+  Per-building, field and collection-area staffing limits remain the final
+  local cap, so global policy and precise site control work together.
+- Reconciliation fills highest-priority work first and safely preempts workers
+  without cargo from lower-priority jobs when the settlement has no free labor.
+  Category reductions preserve carried resources and deterministic assignment.
+- Forming a squad can pull selected workers out of their current assignments,
+  matching IFZ recruitment behavior; workers carrying resources must deposit
+  them before joining.
+- Production without inputs, power or an active intact building releases its
+  workers until it becomes operational again. The workforce panel identifies
+  blocked work instead of counting those inhabitants as productive.
+- Save v14 persists category priorities and worker caps. The pure v13 → v14
+  migration maps the previous four numeric priority levels to their matching
+  meanings in the six-level scale.
+
 ## Script ownership
 
 All scripts are classic IIFEs on `window.ZS`; `zone.html` defines the load
@@ -235,7 +257,7 @@ order and remains usable through `file://`.
 | `js/zone/regions.js` | Connected outer-sector graph and timed expeditions |
 | `js/zone/orders.js` | Input-created agent command queues |
 | `js/zone/citizens.js` | Citizen identity, needs, roles and persistence snapshots |
-| `js/zone/tasks.js` | Event-driven job board and salvage worker state machine |
+| `js/zone/tasks.js` | Event-driven job board, workforce priorities and worker state machines |
 | `js/zone/gathering.js` | Territorial wood/metal nodes, work-area markers, collection and persistence |
 | `js/zone/squads.js` | Shared squad orders, formation trail, patrol and inventory |
 | `js/zone/scavenge.js` | Seeded loot, reveal, encounters and limited combat |
@@ -288,12 +310,15 @@ sequence.
 12. Campaign event IDs, choice IDs and outcomes persist independently from
     translated display text. Recruitment always uses `ZoneCitizens.recruit`;
     campaign code never creates a parallel population.
+13. Assignment honors category and local caps. Higher-priority work may only
+    preempt a lower-priority worker who is not carrying resources; stalled
+    production never reserves labor.
 
-## Save v13
+## Save v14
 
 ```text
 {
-  v: 13,
+  v: 14,
   world: {
     seed, configured, source, size,
     mapPackId, mapHash, name, center,
@@ -304,6 +329,7 @@ sequence.
     hqId, initialized, stock,
     nextCitizenId, citizens,
     nextJobId, jobs, harvestedTrees,
+    workPolicy: { priorities, max },
     nextSquadId, squads,
     nextFortificationId, fortifications,
     nextFieldId, fields,
@@ -325,7 +351,7 @@ sequence.
 Gathering jobs add `{ targetKind: "resource", resource, bounds, nodeIds, total }`
 to the shared job record.
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV12` are pure/testable steps. A v3
+`ZoneSave.migrateV3` through `ZoneSave.migrateV13` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
@@ -345,21 +371,22 @@ npm test
 
 `tests/smoke.js` proves that every page initializes. `tests/zone-regression.js`
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
-assignment, salvage/conservation and dusk. `tests/zone-gathering.js` covers
+assignment, six-level workforce policy, automatic preemption, category caps,
+blocked production, salvage/conservation and dusk. `tests/zone-gathering.js` covers
 territorial selection, wood/metal collection, staffing, overlap rejection,
-conservation and the v13 round-trip. `tests/zone-squads.js` covers seeded loot,
+conservation and the v14 round-trip. `tests/zone-squads.js` covers seeded loot,
 formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v13 migration, construction
+save/load. `tests/zone-colony.js` covers v5 → v14 migration, construction
 conservation, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
 suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
 polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
 selector, offline procedural fallback, the 5×5 preset and connected expeditions.
-`tests/zone-campaign.js` covers v9 → v13, the radio choice UI, named recruitment,
+`tests/zone-campaign.js` covers v9 → v14, the radio choice UI, named recruitment,
 reputation, daily trade, laws, all cure stages, the final-night multiplier,
 epilogue and save/load persistence.
 `tests/zone-research.js` covers researcher assignment, linear staffing speed,
 passive science, start blockers and in-progress save/load. `tests/zone-farming.js`
 covers the fertilized field → barn → meat cookhouse chain, greenhouse winter
-immunity, finished-ration hunger, staffing and the v13 field/building round-trip.
+immunity, finished-ration hunger, staffing and the v14 field/building round-trip.

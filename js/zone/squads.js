@@ -86,7 +86,8 @@
       for (let i = 0; i < candidates.length && members.length < CFG.SQUAD.MAX_MEMBERS; i++) {
         const agent = candidates[i];
         if (!agent || agent.dead || agent.squadId !== null) continue;
-        if (!initial && (agent.role !== CFG.ROLE.WORKER || agent.jobId !== null)) continue;
+        if (!initial && (agent.role !== CFG.ROLE.WORKER || this.citizens.carryTotal(agent) > 0))
+          continue;
         members.push(agent.cid);
       }
       if (!members.length) return null;
@@ -116,6 +117,8 @@
       for (let i = 0; i < members.length; i++) {
         const member = this.citizens.at(members[i]);
         if (!member) continue;
+        if (member.jobId !== null && this.citizens.tasks)
+          this.citizens.tasks.releaseCitizen(member, false);
         member.jobId = null;
         member.workerState = CFG.WORKER_STATE.IDLE;
         member.role = CFG.ROLE.SQUAD;

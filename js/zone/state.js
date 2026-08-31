@@ -370,11 +370,7 @@
         CFG.PRIORITY.OFF,
         CFG.PRIORITY.HIGHEST,
       );
-      clean.max[i] = clamp(
-        intOr(raw.max && raw.max[i], clean.max[i]),
-        0,
-        CFG.WORK.MAX_WORKERS,
-      );
+      clean.max[i] = clamp(intOr(raw.max && raw.max[i], clean.max[i]), 0, CFG.WORK.MAX_WORKERS);
     }
     return clean;
   }

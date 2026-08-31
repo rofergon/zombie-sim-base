@@ -2115,10 +2115,11 @@
         }
         return;
       }
-      let freeWorkers = 0;
+      let availableWorkers = 0;
       for (let i = 0; i < selected.length; i++)
-        if (selected[i].role === CFG.ROLE.WORKER && selected[i].jobId === null) freeWorkers++;
-      this.squadActions.hidden = freeWorkers < 1;
+        if (selected[i].role === CFG.ROLE.WORKER && citizens.carryTotal(selected[i]) === 0)
+          availableWorkers++;
+      this.squadActions.hidden = availableWorkers < 1;
       this.createSquad.hidden = false;
       this.returnButton.hidden = true;
       this.patrol.hidden = true;
@@ -2139,8 +2140,9 @@
           (a.jobId === null ? "" : " · tarea " + a.jobId) +
           (citizens.carryTotal(a) ? " · carga " + citizens.carryTotal(a) : "");
       } else {
-        this.meta.textContent = freeWorkers + " trabajadores libres pueden formar una escuadra";
-        this.detail.textContent = "Una escuadra acepta como máximo cuatro habitantes disponibles.";
+        this.meta.textContent = availableWorkers + " trabajadores sin carga pueden formar escuadra";
+        this.detail.textContent =
+          "Una escuadra acepta hasta cuatro; quienes tengan una tarea la abandonan de forma segura.";
       }
     }
 

@@ -15,15 +15,36 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
           zone: { hqId: 4 },
         },
         v4 = ZS.ZoneSave.migrateV3(v3),
-        v12 = ZS.ZoneSave.migrate(v4);
-      return { v4, v12 };
+        v14 = ZS.ZoneSave.migrate(v4),
+        oldPriority = ZS.ZoneSave.migrate({
+          v: 13,
+          world: { seed: 90, configured: true, source: "procedural", size: "classic" },
+          clock: { day: 1, minute: 420, speed: 1, paused: true },
+          zone: {
+            jobs: [
+              {
+                id: 1,
+                type: ZS.ZoneConfig.JOB.SALVAGE,
+                targetId: 2,
+                priority: 3,
+                capacity: 2,
+                state: ZS.ZoneConfig.JOB_STATE.ACTIVE,
+                assigned: [],
+              },
+            ],
+          },
+        });
+      return { v4, v14, oldPriority };
     });
     assert.equal(migration.v4.v, 4);
     assert.equal(migration.v4.zone.hqId, 4);
-    assert.equal(migration.v12.v, 14);
-    assert.equal(migration.v12.world.seed, 88);
-    assert.equal(migration.v12.clock.minute, 611);
-    assert.equal(migration.v12.world.source, "procedural");
+    assert.equal(migration.v14.v, 14);
+    assert.equal(migration.v14.world.seed, 88);
+    assert.equal(migration.v14.clock.minute, 611);
+    assert.equal(migration.v14.world.source, "procedural");
+    assert.equal(migration.oldPriority.zone.jobs[0].priority, 4);
+    assert.equal(migration.oldPriority.zone.workPolicy.priorities.length, 8);
+    assert.equal(migration.oldPriority.zone.workPolicy.max.length, 8);
 
     await sim.page.locator("#zone-hq-action").click();
     const start = await sim.page.evaluate(() => ({
@@ -57,27 +78,89 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     const priority = await sim.page.evaluate(() => {
       const scenario = ZS.scenario,
+        CFG = ZS.ZoneConfig,
         targets = [];
-      for (let i = 0; i < scenario.map.records.length && targets.length < 4; i++) {
+      for (let i = 0; i < scenario.map.records.length && targets.length < 5; i++) {
         const record = scenario.map.records[i];
-        if (record !== scenario.map.hq && scenario.map.materialsTotal(record) > 0)
+        if (
+          record !== scenario.map.hq &&
+          scenario.map.reachable(record) &&
+          scenario.map.materialsTotal(record) > 0
+        )
           targets.push(record);
       }
       const jobs = [];
-      for (let i = 0; i < targets.length; i++)
-        jobs.push(scenario.tasks.postSalvage(targets[i].id, ZS.ZoneConfig.PRIORITY.NORMAL));
-      const high = jobs[jobs.length - 1],
-        before = high.assigned.slice();
-      scenario.tasks.setPriority(high.id, ZS.ZoneConfig.PRIORITY.HIGH);
-      const after = high.assigned.slice();
-      for (let i = 0; i < jobs.length; i++) scenario.tasks.cancel(jobs[i].id);
-      return { before, after };
+      for (let i = 0; i < 4; i++)
+        jobs.push(scenario.tasks.postSalvage(targets[i].id, CFG.PRIORITY.LOWEST));
+      const high = scenario.tasks.postSalvage(targets[4].id, CFG.PRIORITY.HIGHEST),
+        lowAfterPreemption = jobs.reduce((sum, job) => sum + job.assigned.length, 0),
+        highAfterPreemption = high.assigned.length;
+      jobs.push(high);
+      scenario.tasks.setWorkMax(CFG.WORK_KIND.SALVAGE, 5);
+      const capped = jobs.reduce((sum, job) => sum + job.assigned.length, 0);
+      scenario.tasks.setWorkPriority(CFG.WORK_KIND.SALVAGE, CFG.PRIORITY.HIGH);
+      const allHigh = jobs.every((job) => job.priority === CFG.PRIORITY.HIGH),
+        oldTarget = jobs[0].targetId;
+      scenario.tasks.cancel(jobs[0].id);
+      const inherited = scenario.tasks.postSalvage(oldTarget),
+        inheritedPriority = inherited.priority;
+      jobs.push(inherited);
+      for (let i = 0; i < jobs.length; i++)
+        if (jobs[i].state === CFG.JOB_STATE.ACTIVE) scenario.tasks.cancel(jobs[i].id);
+      scenario.tasks.setWorkPriority(CFG.WORK_KIND.SALVAGE, CFG.PRIORITY.MEDIUM);
+      scenario.tasks.setWorkMax(CFG.WORK_KIND.SALVAGE, CFG.WORK.MAX_WORKERS);
+      return {
+        highAfterPreemption,
+        lowAfterPreemption,
+        capped,
+        allHigh,
+        inheritedPriority,
+      };
     });
-    assert.notDeepEqual(
-      priority.after,
-      priority.before,
-      "priority change should rebalance workers",
+    assert.equal(priority.highAfterPreemption, 3);
+    assert.equal(priority.lowAfterPreemption, 9);
+    assert.equal(priority.capped, 5);
+    assert.equal(priority.allHigh, true);
+    assert.equal(priority.inheritedPriority, 4);
+
+    await sim.page.locator(".zone-population").click();
+    assert.equal(await sim.page.locator(".zone-labor-row").count(), 8);
+    assert.equal(await sim.page.locator("#zone-priority option").count(), 6);
+    assert.match(
+      await sim.page.locator(".zone-labor-help").textContent(),
+      /reasigna automáticamente/,
     );
+    await sim.page.locator('[data-work-priority="7"][data-work-priority-delta="1"]').click();
+    assert.equal(
+      await sim.page.evaluate(
+        () => ZS.scenario.state.zone.workPolicy.priorities[ZS.ZoneConfig.WORK_KIND.RESEARCH],
+      ),
+      3,
+    );
+    await sim.page.locator('[data-work-priority="7"][data-work-priority-delta="-1"]').click();
+
+    const squadPull = await sim.page.evaluate(() => {
+      const scenario = ZS.scenario,
+        CFG = ZS.ZoneConfig,
+        target = scenario.map.records.find(
+          (record) =>
+            record !== scenario.map.hq &&
+            scenario.map.reachable(record) &&
+            scenario.map.materialsTotal(record) > 0,
+        ),
+        job = scenario.tasks.postSalvage(target.id, CFG.PRIORITY.LOWEST),
+        worker = scenario.citizens.at(job.assigned[0]),
+        squad = scenario.squads.create([worker], false),
+        result = {
+          created: Boolean(squad),
+          removedFromJob: !job.assigned.includes(worker.cid) && worker.jobId === null,
+          squadRole: worker.role === CFG.ROLE.SQUAD,
+        };
+      scenario.squads.removeCitizen(worker, false);
+      scenario.tasks.cancel(job.id);
+      return result;
+    });
+    assert.deepEqual(squadPull, { created: true, removedFromJob: true, squadRole: true });
 
     const salvage = await sim.page.evaluate(() => {
       const scenario = ZS.scenario,
@@ -223,6 +306,42 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(replacement.assigned.includes(replacement.deadId), false);
     assert.equal(replacement.assigned.length, 3);
 
+    const stalledProduction = await sim.page.evaluate(() => {
+      const scenario = ZS.scenario,
+        CFG = ZS.ZoneConfig,
+        R = CFG.RESOURCE;
+      for (let i = 0; i < scenario.tasks.jobs.length; i++) {
+        const job = scenario.tasks.jobs[i];
+        if (job.state === CFG.JOB_STATE.ACTIVE) scenario.tasks.cancel(job.id);
+      }
+      const record = scenario.map.records.find(
+        (candidate) =>
+          candidate !== scenario.map.hq &&
+          candidate.use === CFG.BUILDING_USE.ABANDONED &&
+          scenario.map.reachable(candidate),
+      );
+      scenario.map.adapt(record, CFG.BUILDING_USE.WORKSHOP, false);
+      scenario.state.stock[R.METAL] = 0;
+      scenario.adaptations.recalculatePower();
+      const job = scenario.tasks.postProduction(record.id);
+      scenario.tasks.reconcile();
+      const blockedAssigned = job.assigned.length,
+        blocked = scenario.tasks.laborModel()[CFG.WORK_KIND.INDUSTRY].blocked;
+      scenario.state.stock[R.METAL] = 1;
+      scenario.tasks.reconcile();
+      const suppliedAssigned = job.assigned.length;
+      scenario.tasks.setWorkMax(CFG.WORK_KIND.INDUSTRY, 0);
+      const cappedAssigned = job.assigned.length;
+      scenario.tasks.setWorkMax(CFG.WORK_KIND.INDUSTRY, CFG.WORK.MAX_WORKERS);
+      return { blockedAssigned, blocked, suppliedAssigned, cappedAssigned };
+    });
+    assert.deepEqual(stalledProduction, {
+      blockedAssigned: 0,
+      blocked: 1,
+      suppliedAssigned: 1,
+      cappedAssigned: 0,
+    });
+
     const night = await sim.page.evaluate(() => {
       const scenario = ZS.scenario;
       scenario.state.minute = ZS.ZoneConfig.CLOCK.DUSK;
@@ -260,7 +379,8 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assertNoErrors(sim.errors, "zone workers");
     process.stdout.write("✓ v3 → v4 → v14 and v14 worker round-trip\n");
     process.stdout.write("✓ population, hunger, salvage and conservation\n");
-    process.stdout.write("✓ priority rebalance, replacement and dusk return\n");
+    process.stdout.write("✓ six-level priorities, category caps, preemption and stalled work\n");
+    process.stdout.write("✓ replacement and dusk return\n");
   } finally {
     await sim.context.close();
     await browser.close();

@@ -79,8 +79,7 @@
 
     workKind(job, target) {
       if (!job) return -1;
-      if (job.type === CFG.JOB.BUILD || job.type === CFG.JOB.REPAIR)
-        return CFG.WORK_KIND.BUILD;
+      if (job.type === CFG.JOB.BUILD || job.type === CFG.JOB.REPAIR) return CFG.WORK_KIND.BUILD;
       if (job.type === CFG.JOB.SALVAGE) return CFG.WORK_KIND.SALVAGE;
       if (job.type === CFG.JOB.GATHER)
         return job.resource === R.WOOD ? CFG.WORK_KIND.WOOD : CFG.WORK_KIND.METAL;
@@ -90,10 +89,7 @@
       const record = target || this.map.at(job.targetId);
       if (!record) return CFG.WORK_KIND.INDUSTRY;
       if (record.use === CFG.BUILDING_USE.FARM) return CFG.WORK_KIND.FARMING;
-      if (
-        record.use === CFG.BUILDING_USE.COOKHOUSE ||
-        record.use === CFG.BUILDING_USE.BARN
-      )
+      if (record.use === CFG.BUILDING_USE.COOKHOUSE || record.use === CFG.BUILDING_USE.BARN)
         return CFG.WORK_KIND.FOOD;
       return CFG.WORK_KIND.INDUSTRY;
     }
@@ -288,10 +284,7 @@
     setPriority(id, priority) {
       const job = this.at(id);
       if (!job || job.state !== CFG.JOB_STATE.ACTIVE) return false;
-      job.priority = Math.max(
-        CFG.PRIORITY.OFF,
-        Math.min(CFG.PRIORITY.HIGHEST, priority | 0),
-      );
+      job.priority = Math.max(CFG.PRIORITY.OFF, Math.min(CFG.PRIORITY.HIGHEST, priority | 0));
       this._releaseJobWorkers(job, false);
       this.markDirty();
       this.reconcile();
@@ -301,10 +294,7 @@
 
     setWorkPriority(kind, priority) {
       if (!Number.isInteger(kind) || kind < 0 || kind >= CFG.WORK_KIND.COUNT) return false;
-      const next = Math.max(
-        CFG.PRIORITY.OFF,
-        Math.min(CFG.PRIORITY.HIGHEST, priority | 0),
-      );
+      const next = Math.max(CFG.PRIORITY.OFF, Math.min(CFG.PRIORITY.HIGHEST, priority | 0));
       if (this.workPolicy.priorities[kind] === next) return false;
       this.workPolicy.priorities[kind] = next;
       for (let i = 0; i < this.jobs.length; i++) {
@@ -436,11 +426,7 @@
       }
       this._trimWorkMaximums();
       if (this.state.phase() === "dusk" || this.state.phase() === "night") return;
-      for (
-        let priority = CFG.PRIORITY.HIGHEST;
-        priority >= CFG.PRIORITY.LOWEST;
-        priority--
-      ) {
+      for (let priority = CFG.PRIORITY.HIGHEST; priority >= CFG.PRIORITY.LOWEST; priority--) {
         let assigned = true;
         while (assigned) {
           assigned = false;

@@ -945,7 +945,7 @@
     createSquad() {
       const squad = this.squads.create(this.selected, false);
       if (!squad) {
-        this.ui.toast("Selecciona hasta cuatro trabajadores libres.");
+        this.ui.toast("Selecciona hasta cuatro trabajadores sin carga.");
         return false;
       }
       this._clearSelection();
@@ -1192,8 +1192,7 @@
     cycleGatherPriority(id) {
       const job = this.tasks.at(id);
       if (!job || job.type !== CFG.JOB.GATHER) return false;
-      const next =
-          job.priority >= CFG.PRIORITY.HIGHEST ? CFG.PRIORITY.LOWEST : job.priority + 1,
+      const next = job.priority >= CFG.PRIORITY.HIGHEST ? CFG.PRIORITY.LOWEST : job.priority + 1,
         result = this.tasks.setPriority(id, next);
       this._markUI();
       return result;
