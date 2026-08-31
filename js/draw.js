@@ -740,7 +740,14 @@
         ? world.queryVisible("trees", vis, visibleTrees)
         : world.trees;
       for (const tr of trees) {
-        if (tr.x < vis.x0 || tr.x > vis.x1 || tr.y < vis.y0 - tr.r * 2 || tr.y > vis.y1) continue;
+        if (
+          tr.hidden ||
+          tr.x < vis.x0 ||
+          tr.x > vis.x1 ||
+          tr.y < vis.y0 - tr.r * 2 ||
+          tr.y > vis.y1
+        )
+          continue;
         addSceneItem(listN++, tr.y, 0, tr);
       }
     }

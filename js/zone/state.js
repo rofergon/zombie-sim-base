@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v12. */
+   shapes are discarded at this storage boundary so gameplay only sees v13. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -25,6 +25,7 @@
       citizens: [],
       nextJobId: 1,
       jobs: [],
+      harvestedTrees: [],
       nextSquadId: 1,
       squads: [],
       nextFortificationId: 1,
@@ -207,6 +208,12 @@
     return { v: 12, world: data.world, clock: data.clock, zone };
   }
 
+  function migrateV12(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.harvestedTrees = [];
+    return { v: 13, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
@@ -258,7 +265,13 @@
       !raw ||
       !Number.isInteger(raw.id) ||
       raw.id < 1 ||
-      ![CFG.JOB.SALVAGE, CFG.JOB.BUILD, CFG.JOB.PRODUCE, CFG.JOB.RESEARCH].includes(raw.type)
+      ![
+        CFG.JOB.GATHER,
+        CFG.JOB.SALVAGE,
+        CFG.JOB.BUILD,
+        CFG.JOB.PRODUCE,
+        CFG.JOB.RESEARCH,
+      ].includes(raw.type)
     )
       return null;
     const assigned = [];
@@ -266,17 +279,49 @@
       for (let i = 0; i < raw.assigned.length; i++)
         if (Number.isInteger(raw.assigned[i]) && !assigned.includes(raw.assigned[i]))
           assigned.push(raw.assigned[i]);
+    const targetKind =
+        raw.targetKind === "field"
+          ? "field"
+          : raw.targetKind === "resource"
+            ? "resource"
+            : "building",
+      nodeIds = [];
+    if (raw.type === CFG.JOB.GATHER && Array.isArray(raw.nodeIds))
+      for (let i = 0; i < raw.nodeIds.length && nodeIds.length < CFG.GATHER.MAX_NODES_PER_AREA; i++) {
+        const id = intOr(raw.nodeIds[i], -1);
+        if (id >= 0 && !nodeIds.includes(id)) nodeIds.push(id);
+      }
+    const bounds = raw.bounds && typeof raw.bounds === "object" ? raw.bounds : null;
     return {
       id: raw.id,
       type: raw.type,
       targetId: Math.max(0, intOr(raw.targetId, 0)),
-      targetKind: raw.targetKind === "field" ? "field" : "building",
+      targetKind,
+      resource:
+        raw.type === CFG.JOB.GATHER && (raw.resource === CFG.RESOURCE.WOOD || raw.resource === CFG.RESOURCE.METAL)
+          ? raw.resource
+          : null,
+      bounds:
+        raw.type === CFG.JOB.GATHER && bounds
+          ? {
+              x0: numberOr(bounds.x0, 0),
+              y0: numberOr(bounds.y0, 0),
+              x1: numberOr(bounds.x1, 0),
+              y1: numberOr(bounds.y1, 0),
+            }
+          : null,
+      nodeIds,
+      total: raw.type === CFG.JOB.GATHER ? Math.max(0, intOr(raw.total, 0)) : 0,
       priority: clamp(
         intOr(raw.priority, CFG.PRIORITY.NORMAL),
         CFG.PRIORITY.OFF,
         CFG.PRIORITY.HIGH,
       ),
-      capacity: clamp(intOr(raw.capacity, CFG.TASK.SALVAGE_CAPACITY), 1, 12),
+      capacity: clamp(
+        intOr(raw.capacity, CFG.TASK.SALVAGE_CAPACITY),
+        raw.type === CFG.JOB.GATHER ? 0 : 1,
+        raw.type === CFG.JOB.GATHER ? CFG.GATHER.MAX_WORKERS : 12,
+      ),
       progress: Math.max(0, numberOr(raw.progress, 0)),
       state:
         raw.state === CFG.JOB_STATE.COMPLETE || raw.state === CFG.JOB_STATE.CANCELED
@@ -583,6 +628,11 @@
           zone.jobs.push(job);
         }
       }
+    if (Array.isArray(source.harvestedTrees))
+      for (let i = 0; i < source.harvestedTrees.length; i++) {
+        const id = intOr(source.harvestedTrees[i], -1);
+        if (id >= 0 && !zone.harvestedTrees.includes(id)) zone.harvestedTrees.push(id);
+      }
     if (Array.isArray(source.squads))
       for (let i = 0; i < source.squads.length; i++) {
         const squad = normalizeSquad(source.squads[i]);
@@ -670,6 +720,7 @@
       if (data.v === 9) data = migrateV9(data);
       if (data.v === 10) data = migrateV10(data);
       if (data.v === 11) data = migrateV11(data);
+      if (data.v === 12) data = migrateV12(data);
       return normalize(data);
     }
 

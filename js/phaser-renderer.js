@@ -603,6 +603,7 @@
         for (let i = 0; i < this.visibleTrees.length; i++) {
           const tree = this.visibleTrees[i];
           if (
+            !tree.hidden &&
             tree.x >= visible.x0 - tree.r &&
             tree.x <= visible.x1 + tree.r &&
             tree.y >= visible.y0 &&
@@ -628,7 +629,7 @@
         this.visibleTrees.length = 0;
         this.visibleBuildings.length = 0;
         for (let i = 0; i < this.world.trees.length; i++)
-          this.visibleTrees.push(this.world.trees[i]);
+          if (!this.world.trees[i].hidden) this.visibleTrees.push(this.world.trees[i]);
         for (let i = 0; i < this.world.buildings.length; i++)
           this.visibleBuildings.push(this.world.buildings[i]);
       }

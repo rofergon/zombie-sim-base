@@ -20,6 +20,7 @@
       this.onChanged = null;
       this.adaptations = null;
       this.agriculture = null;
+      this.gathering = null;
     }
 
     connect(citizens, onChanged) {
@@ -35,6 +36,10 @@
       this.agriculture = agriculture;
     }
 
+    connectGathering(gathering) {
+      this.gathering = gathering;
+    }
+
     markDirty() {
       this.dirty = true;
     }
@@ -48,7 +53,7 @@
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
         if (
-          job.targetKind !== "field" &&
+          job.targetKind === "building" &&
           job.targetId === buildingId &&
           job.state === CFG.JOB_STATE.ACTIVE
         )
@@ -76,7 +81,8 @@
         !record ||
         !this.map.reachable(record) ||
         record === this.map.hq ||
-        this.map.materialsTotal(record) <= 0
+        this.map.materialsTotal(record) <= 0 ||
+        (this.gathering && this.gathering.isBuildingClaimed(buildingId))
       )
         return null;
       const current = this.forBuilding(buildingId);
@@ -88,6 +94,40 @@
         targetKind: "building",
         priority: Number.isInteger(priority) ? priority : CFG.PRIORITY.NORMAL,
         capacity: CFG.TASK.SALVAGE_CAPACITY,
+        progress: 0,
+        state: CFG.JOB_STATE.ACTIVE,
+        assigned: [],
+        buildUse: null,
+        reserved: Array.from({ length: R.COUNT }, () => 0),
+      };
+      this.jobs.push(job);
+      this._releaseIdleAssignments();
+      this.markDirty();
+      this.reconcile();
+      if (this.onChanged) this.onChanged();
+      return job;
+    }
+
+    postGather(resource, bounds, nodeIds, total) {
+      if (
+        !this.gathering ||
+        !bounds ||
+        !Array.isArray(nodeIds) ||
+        !nodeIds.length ||
+        (resource !== R.WOOD && resource !== R.METAL)
+      )
+        return null;
+      const job = {
+        id: this.state.zone.nextJobId++,
+        type: CFG.JOB.GATHER,
+        targetId: 0,
+        targetKind: "resource",
+        resource,
+        bounds: { x0: bounds.x0, y0: bounds.y0, x1: bounds.x1, y1: bounds.y1 },
+        nodeIds: nodeIds.slice(0, CFG.GATHER.MAX_NODES_PER_AREA),
+        total: Math.max(0, total | 0),
+        priority: CFG.PRIORITY.NORMAL,
+        capacity: CFG.GATHER.DEFAULT_WORKERS,
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
         assigned: [],
@@ -223,7 +263,10 @@
     setCapacity(id, capacity) {
       const job = this.at(id);
       if (!job || job.state !== CFG.JOB_STATE.ACTIVE) return false;
-      const next = Math.max(1, Math.min(12, capacity | 0));
+      const next = Math.max(
+        job.type === CFG.JOB.GATHER ? 0 : 1,
+        Math.min(job.type === CFG.JOB.GATHER ? CFG.GATHER.MAX_WORKERS : 12, capacity | 0),
+      );
       if (next === job.capacity) return false;
       job.capacity = next;
       while (job.assigned.length > job.capacity) {
@@ -243,6 +286,7 @@
         const job = this.jobs[i];
         if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
         const target = this._target(job);
+        if (job.type === CFG.JOB.GATHER && !target) continue;
         if (!this._reachable(job, target)) {
           this.cancel(job.id);
           continue;
@@ -272,7 +316,9 @@
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
         if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
-        if (!this._reachable(job, this._target(job))) {
+        const gatherExhausted =
+          job.type === CFG.JOB.GATHER && (!this.gathering || this.gathering.available(job) <= 0);
+        if (!gatherExhausted && !this._reachable(job, this._target(job))) {
           this.cancel(job.id);
           continue;
         }
@@ -298,12 +344,14 @@
           !this._hasInFlight(job)
         )
           this._complete(job);
+        else if (gatherExhausted && !this._hasInFlight(job)) this._complete(job);
       }
       if (this.state.phase() === "dusk" || this.state.phase() === "night") return;
       for (let priority = CFG.PRIORITY.HIGH; priority >= CFG.PRIORITY.LOW; priority--)
         for (let i = 0; i < this.jobs.length; i++) {
           const job = this.jobs[i];
           if (job.state !== CFG.JOB_STATE.ACTIVE || job.priority !== priority) continue;
+          if (job.type === CFG.JOB.GATHER && this.gathering.available(job) <= 0) continue;
           while (job.assigned.length < job.capacity) {
             const worker = this._freeWorker();
             if (!worker) return;
@@ -367,12 +415,16 @@
         const index = job.assigned.indexOf(worker.cid);
         if (index >= 0) job.assigned.splice(index, 1);
         if (died) {
-          const record = this.map.at(job.targetId);
-          if (record)
+          if (job.type === CFG.JOB.GATHER && this.gathering)
+            this.gathering.restoreCargo(job, worker);
+          else {
+            const record = this.map.at(job.targetId);
+            if (record)
             for (let i = 0; i < R.COUNT; i++) {
               record.salvage[i] += worker.carry[i];
               worker.carry[i] = 0;
             }
+          }
         }
       }
       worker.jobId = null;
@@ -418,10 +470,17 @@
 
     _toJob(worker, job, dt, t, nav) {
       if (!job) return;
-      const record = this._target(job),
+      const record = this._target(job, worker),
         door = record && record.shape && record.shape.door,
         target = door ? door.inner : record;
-      if (!target) return;
+      if (!target) {
+        if (this.citizens.carryTotal(worker)) worker.workerState = WS.RETURNING;
+        else {
+          this._complete(job);
+          worker.workerState = WS.IDLE;
+        }
+        return;
+      }
       if (job.targetKind === "field")
         this.agriculture.workerPoint(record, worker.cid, worker.workTarget);
       else {
@@ -437,9 +496,10 @@
         t,
         nav,
       );
-      if (result === "arrived" || (job.targetKind !== "field" && worker.bld === job.targetId)) {
+      if (result === "arrived" || (job.targetKind === "building" && worker.bld === job.targetId)) {
         worker.workerState = WS.WORKING;
         worker.zoneBuildingId = job.targetId;
+        worker.workT = 0;
         worker.vx = worker.vy = 0;
       }
     }
@@ -472,6 +532,18 @@
           job.progress -= seconds;
           if (controller.produce(record) && this.onChanged) this.onChanged();
         }
+        return;
+      }
+      if (job.type === CFG.JOB.GATHER) {
+        worker.wantMove = false;
+        worker.vx *= Math.max(0, 1 - dt * 6);
+        worker.vy *= Math.max(0, 1 - dt * 6);
+        worker.workT += dt;
+        if (worker.workT < CFG.GATHER.WORK_SECONDS) return;
+        worker.workT = 0;
+        const room = CFG.CITIZEN.CARRY_CAPACITY - this.citizens.carryTotal(worker),
+          amount = this.gathering ? this.gathering.collect(job, worker, room) : 0;
+        worker.workerState = amount ? WS.RETURNING : WS.TO_JOB;
         return;
       }
       const record = this.map.at(job.targetId);
@@ -519,7 +591,9 @@
       else if (
         job &&
         job.state === CFG.JOB_STATE.ACTIVE &&
-        (job.type !== CFG.JOB.SALVAGE || this.map.materialsTotal(this.map.at(job.targetId)))
+        (job.type === CFG.JOB.GATHER
+          ? this.gathering && this.gathering.available(job) > 0
+          : job.type !== CFG.JOB.SALVAGE || this.map.materialsTotal(this.map.at(job.targetId)))
       )
         worker.workerState = WS.TO_JOB;
       else {
@@ -531,17 +605,21 @@
       if (this.onChanged) this.onChanged();
     }
 
-    _target(job) {
+    _target(job, worker) {
       if (!job) return null;
-      return job.targetKind === "field" && this.agriculture
-        ? this.agriculture.at(job.targetId)
-        : this.map.at(job.targetId);
+      if (job.targetKind === "field" && this.agriculture) return this.agriculture.at(job.targetId);
+      if (job.targetKind === "resource" && this.gathering)
+        return this.gathering.target(job, worker || null);
+      return this.map.at(job.targetId);
     }
 
     _reachable(job, target) {
-      return job && job.targetKind === "field"
-        ? Boolean(this.agriculture && this.agriculture.reachable(target))
-        : this.map.reachable(target);
+      if (!job) return false;
+      if (job.targetKind === "field")
+        return Boolean(this.agriculture && this.agriculture.reachable(target));
+      if (job.targetKind === "resource")
+        return Boolean(this.gathering && this.gathering.reachable(job));
+      return this.map.reachable(target);
     }
   }
 
