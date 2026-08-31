@@ -139,7 +139,7 @@ const { assertNoErrors, launch, openSim } = require("./browser");
       };
     });
 
-    assert.equal(result.version, 13);
+    assert.equal(result.version, 14);
     assert.deepEqual(result.wood, {
       type: 3,
       total: 4,
@@ -167,7 +167,7 @@ const { assertNoErrors, launch, openSim } = require("./browser");
     });
     assertNoErrors(sim.errors, "zone gathering");
     process.stdout.write("✓ territorial wood/metal collection, staffing and conservation\n");
-    process.stdout.write("✓ resource panel, overlap guard and v13 round-trip\n");
+    process.stdout.write("✓ resource panel, overlap guard and v14 round-trip\n");
   } finally {
     await browser.close();
   }

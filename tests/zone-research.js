@@ -15,7 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         zone: { tech: Array.from({ length: 8 }, () => false) },
       }),
     );
-    assert.equal(migration.v, 13);
+    assert.equal(migration.v, 14);
     assert.deepEqual(migration.zone.research, {
       current: 0,
       progress: 0,
@@ -145,7 +145,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         panel: document.querySelector("#zone-system-body").textContent,
       };
     }, research.recordId);
-    assert.equal(restored.version, 13);
+    assert.equal(restored.version, 14);
     assert.equal(restored.current, 2);
     assert.equal(restored.progress, 5);
     assert.equal(restored.agriculture, true);

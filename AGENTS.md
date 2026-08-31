@@ -310,9 +310,9 @@ global night defense, geographic maps, the human campaign and IFZ-style
 cultivation. The initial population is 16 (four in the first squad and twelve
 workers). Vehicles remain later work.
 
-- **Save schema**: `SAVE_VERSION = 13`. Pure migrations advance v1 through
+- **Save schema**: `SAVE_VERSION = 14`. Pure migrations advance v1 through
   v12 into the current structure. `ZoneSave.normalize` is the only legacy or
-  corrupt-data boundary; gameplay only reads v13.
+  corrupt-data boundary; gameplay only reads v14.
 - **Citizens** (`js/zone/citizens.js`): stable numeric IDs, HP, morale, hunger,
   role, work state, assignment, cargo and squad membership. Dusk/night returns
   non-critical workers to HQ; resting recovers morale.
