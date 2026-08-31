@@ -44,6 +44,12 @@
     return out;
   }
 
+  function resourcesTotal(source) {
+    let total = 0;
+    if (source) for (let i = 0; i < source.length; i++) total += Math.max(0, source[i] || 0);
+    return total;
+  }
+
   function polygonArea(points) {
     let area = 0;
     for (let i = 0, j = points.length - 1; i < points.length; j = i++)
@@ -301,6 +307,7 @@
             salvage: copyResources(saved ? saved.salvage : generated.salvage),
             loot: copyResources(saved ? saved.loot : generated.loot),
             lootWeapons: copyResources(saved ? saved.lootWeapons : generated.lootWeapons),
+            lootCapacity: resourcesTotal(generated.loot) + resourcesTotal(generated.lootWeapons),
             revealed: saved ? saved.revealed : false,
             cleared: saved ? saved.cleared : false,
             looted: saved ? saved.looted : false,
@@ -317,6 +324,10 @@
             powered: false,
             productionT: saved ? saved.productionT : 0,
           };
+        record.lootCapacity = Math.max(
+          record.lootCapacity,
+          resourcesTotal(record.loot) + resourcesTotal(record.lootWeapons),
+        );
         record.poiLabel = POI_LABEL[record.poi];
         shape.zoneId = i;
         shape.hidden = record.demolished;

@@ -161,6 +161,28 @@ The existing pages remain independent regression targets:
   Persistent three-hour expeditions consume supplies, scout adjacent sectors
   and return bounded resources without adding off-camera agents to hot loops.
 
+### Phase 8 — human campaign and Project Aurora
+
+- A three-act original campaign begins when the headquarters answers a medical
+  transmission. Persistent radio events present resource-, housing- and
+  squad-gated choices instead of detached flavor text.
+- Rescue outcomes add named citizens through the normal persistent population
+  path. New arrivals consume food, need shelter, join work assignments and can
+  later transfer into squads exactly like the starting population.
+- The Faros medical network, Cobalt caravan and Bastion pact keep independent
+  −100…100 standing. Story choices unlock them, alter their trust and open one
+  bounded resource exchange per faction per campaign day.
+- The first settlement assembly unlocks Open Doors, Shared Rations and Health
+  Protocol directives. A directive can change once per day and affects food,
+  morale, recruitment, research or night pressure through explicit rules.
+- Project Aurora advances through signal, viable sample, prototype, human trial
+  and stable formula stages. Every laboratory step requires an active powered
+  research center plus finite science and medicine.
+- The completed formula offers three endings: keep it local, broadcast it to
+  every receiver, or form a high-reputation coalition. The two open endings
+  culminate in a reinforced final night; the epilogue is dismissible and the
+  endless settlement simulation remains playable afterward.
+
 ## Script ownership
 
 All scripts are classic IIFEs on `window.ZS`; `zone.html` defines the load
@@ -181,6 +203,7 @@ order and remains usable through `file://`.
 | `js/zone/adaptations.js` | Building costs, research, power, production and repairs |
 | `js/zone/fortifications.js` | Placement, navigation ownership, persistence and automated defenses |
 | `js/zone/defense.js` | Night transitions, horde pressure, structural damage and dawn report |
+| `js/zone/campaign.js` | Human events, recruitment, factions, laws, trade, cure and endings |
 | `js/zone/ui.js` | Persistent DOM controls only |
 | `js/scenarios/zone.js` | Scenario contract and orchestration |
 
@@ -222,12 +245,15 @@ sequence.
     substituting different geometry.
 11. Large maps allocate render surfaces per visible chunk. The classic pages
     retain the original single pre-rendered canvas path.
+12. Campaign event IDs, choice IDs and outcomes persist independently from
+    translated display text. Recruitment always uses `ZoneCitizens.recruit`;
+    campaign code never creates a parallel population.
 
-## Save v9
+## Save v10
 
 ```text
 {
-  v: 9,
+  v: 10,
   world: {
     seed, configured, source, size,
     mapPackId, mapHash, name, center,
@@ -243,19 +269,25 @@ sequence.
     buildings,
     regions, expedition,
     tech,
-    defense
+    defense,
+    campaign: {
+      act, pending, completed, history, flags,
+      factions, law, lawChangedDay,
+      cureStage, finalNight, endingPath, ending,
+      endingUnread, lastEventDay, lastTradeDay
+    }
   }
 }
 ```
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV8` are pure/testable steps. A v3
+`ZoneSave.migrateV3` through `ZoneSave.migrateV9` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
 ## Later-phase boundary
 
-Vehicles, trade, factions and laws remain out of scope. Later work may deepen
-special-infected behaviors, add moving regional squads and introduce renewable
+Vehicles remain out of scope. Later work may deepen special-infected behaviors,
+add moving regional squads and faction settlements, and introduce renewable
 geographic data without moving scenario rules into the generic core.
 
 ## Verification
@@ -270,10 +302,13 @@ npm test
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
 assignment, salvage/conservation and dusk. `tests/zone-squads.js` covers seeded
 loot, formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v9 migration, construction
+save/load. `tests/zone-colony.js` covers v5 → v10 migration, construction
 conservation, research, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
 suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
 polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
 selector, offline procedural fallback, the 5×5 preset and connected expeditions.
+`tests/zone-campaign.js` covers v9 → v10, the radio choice UI, named recruitment,
+reputation, daily trade, laws, all cure stages, the final-night multiplier,
+epilogue and save/load persistence.

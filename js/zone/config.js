@@ -91,7 +91,14 @@
 
   const FACTION = Object.freeze({ FAROS: 0, COBALTO: 1, BASTION: 2, COUNT: 3 });
   const LAW = Object.freeze({ NONE: 0, OPEN_DOORS: 1, RATIONS: 2, QUARANTINE: 3, COUNT: 4 });
-  const CURE_STAGE = Object.freeze({ DORMANT: 0, SIGNAL: 1, SAMPLE: 2, PROTOTYPE: 3, TRIAL: 4, FORMULA: 5 });
+  const CURE_STAGE = Object.freeze({
+    DORMANT: 0,
+    SIGNAL: 1,
+    SAMPLE: 2,
+    PROTOTYPE: 3,
+    TRIAL: 4,
+    FORMULA: 5,
+  });
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",

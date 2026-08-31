@@ -161,8 +161,13 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         card: scenario.ui.card.hidden,
         commands: scenario.ui.commandBar.hidden,
         title: scenario.ui.title.textContent,
+        portraits: scenario.ui.memberDetail.querySelectorAll(".zone-portrait").length,
+        portraitAsset: getComputedStyle(
+          scenario.ui.memberDetail.querySelector(".zone-portrait"),
+        ).backgroundImage,
       };
       const building = scenario.map.records.find((record) => record !== scenario.map.hq);
+      building.revealed = false;
       scenario.debugSelectBuilding(building.id);
       const buildingView = {
         inspector: scenario.ui.inspector.hidden,
@@ -170,7 +175,19 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         card: scenario.ui.card.hidden,
         commands: scenario.ui.commandBar.hidden,
         title: scenario.ui.title.textContent,
+        unknown: Boolean(scenario.ui.selectionVisual.querySelector(".zone-resource-unknown")),
+        resourceSlots: scenario.ui.selectionVisual.querySelectorAll(".zone-resource-slot").length,
+        previewAsset: scenario.ui.selectionVisual.querySelector("img").src,
+        poiHidden: !scenario.ui.meta.textContent.includes(building.poiLabel),
       };
+      building.revealed = true;
+      scenario._refreshSelection();
+      const discoveredView = {
+        unknown: Boolean(scenario.ui.selectionVisual.querySelector(".zone-resource-unknown")),
+        resourceSlots: scenario.ui.selectionVisual.querySelectorAll(".zone-resource-slot").length,
+        poiVisible: scenario.ui.meta.textContent.includes(building.poiLabel),
+      };
+      building.revealed = false;
       scenario._clearSelection();
       scenario.selectedBuilding = null;
       scenario._refreshSelection();
@@ -190,7 +207,14 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         expanded: scenario.ui.rosterToggle.getAttribute("aria-expanded"),
       };
       scenario.debugSelectSquad(squad.id);
-      return { squadView, buildingView, emptyView, rosterView, dottedSegments };
+      return {
+        squadView,
+        buildingView,
+        discoveredView,
+        emptyView,
+        rosterView,
+        dottedSegments,
+      };
     }, move);
     assert.deepEqual(contextualUI.squadView, {
       inspector: false,
@@ -198,12 +222,22 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       card: false,
       commands: false,
       title: "Patrulla " + move.id + " · 4/4",
+      portraits: 4,
+      portraitAsset: contextualUI.squadView.portraitAsset,
     });
+    assert.match(contextualUI.squadView.portraitAsset, /survivors-atlas\.png/);
     assert.equal(contextualUI.buildingView.inspector, false);
     assert.equal(contextualUI.buildingView.roster, true);
     assert.equal(contextualUI.buildingView.card, false);
     assert.equal(contextualUI.buildingView.commands, true);
-    assert.match(contextualUI.buildingView.title, /^edificio /);
+    assert.equal(contextualUI.buildingView.title, "Edificio abandonado");
+    assert.equal(contextualUI.buildingView.unknown, true);
+    assert.equal(contextualUI.buildingView.resourceSlots, 0);
+    assert.equal(contextualUI.buildingView.poiHidden, true);
+    assert.match(contextualUI.buildingView.previewAsset, /abandoned-building\.png$/);
+    assert.equal(contextualUI.discoveredView.unknown, false);
+    assert.ok(contextualUI.discoveredView.resourceSlots > 0);
+    assert.equal(contextualUI.discoveredView.poiVisible, true);
     assert.deepEqual(contextualUI.emptyView, {
       inspector: true,
       roster: true,

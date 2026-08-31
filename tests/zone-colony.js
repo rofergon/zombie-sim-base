@@ -436,7 +436,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(await sim.page.evaluate(() => ZS.scenario.paused), false);
 
     assertNoErrors(sim.errors, "zone colony");
-    process.stdout.write("✓ v5 → v6 → v7 → v8 → v9 → v10 migration and adapted-building round-trip\n");
+    process.stdout.write(
+      "✓ v5 → v6 → v7 → v8 → v9 → v10 migration and adapted-building round-trip\n",
+    );
     process.stdout.write(
       "✓ construction reservation, research, power and staffed food production\n",
     );

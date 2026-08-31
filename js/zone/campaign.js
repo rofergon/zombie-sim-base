@@ -60,7 +60,11 @@
     }),
   ]);
   const LAW_META = Object.freeze([
-    Object.freeze({ id: L.NONE, name: "Sin directiva", detail: "Cada refugio decide por su cuenta." }),
+    Object.freeze({
+      id: L.NONE,
+      name: "Sin directiva",
+      detail: "Cada refugio decide por su cuenta.",
+    }),
     Object.freeze({
       id: L.OPEN_DOORS,
       name: "Puertas abiertas",
@@ -465,7 +469,11 @@
           this.map.countUse(U.RESEARCH) > 0
         );
       if (id === "clinic_vote")
-        return this.state.day >= 4 && this.done("roof_survivors") && this.citizens.stats().population >= 16;
+        return (
+          this.state.day >= 4 &&
+          this.done("roof_survivors") &&
+          this.citizens.stats().population >= 16
+        );
       if (id === "district_blackout") return this.state.day >= 5 && this.done("cobalt_caravan");
       if (id === "stolen_notes") return this.state.day >= 6 && this.data.cureStage >= C.SAMPLE;
       if (id === "water_tower") return this.state.day >= 7 && this.done("district_blackout");
@@ -515,8 +523,7 @@
         return this.state.stock[R.METAL] >= 6 && housing >= population + this._recruitCount(2);
       if (eventId === "district_blackout" && choiceId === "evacuate")
         return this.state.stock[R.FOOD] >= 8 && housing >= population + this._recruitCount(3);
-      if (eventId === "stolen_notes" && choiceId === "guard")
-        return this.state.stock[R.AMMO] >= 8;
+      if (eventId === "stolen_notes" && choiceId === "guard") return this.state.stock[R.AMMO] >= 8;
       if (eventId === "water_tower" && choiceId === "rescue")
         return (
           this.state.stock[R.FOOD] >= 10 &&
@@ -563,7 +570,8 @@
       this.data.pending = null;
       if (!this.data.completed.includes(eventId)) this.data.completed.push(eventId);
       this._history(eventId, event.title, choice.label, outcome);
-      if (this.scenario) this.scenario.paused = Boolean(this.defense.data.report || this.data.endingUnread);
+      if (this.scenario)
+        this.scenario.paused = Boolean(this.defense.data.report || this.data.endingUnread);
       this.state.save();
       if (this.onChanged) this.onChanged();
       return true;
@@ -589,7 +597,10 @@
           const count = this._recruit(5);
           this.citizens.adjustMorale(5);
           this._standing(F.FAROS, 8);
-          return count + " supervivientes cruzan la puerta mientras los refugios improvisan nuevas literas.";
+          return (
+            count +
+            " supervivientes cruzan la puerta mientras los refugios improvisan nuevas literas."
+          );
         }
         if (choiceId === "specialists") {
           this._stock(R.FOOD, -5);
@@ -597,7 +608,10 @@
           const count = this._recruit(2);
           this._stock(R.SCIENCE, 5);
           this._standing(F.FAROS, 5);
-          return count + " personas llegan con cuadernos escolares llenos de observaciones sobre la fiebre.";
+          return (
+            count +
+            " personas llegan con cuadernos escolares llenos de observaciones sobre la fiebre."
+          );
         }
         this._stock(R.WOOD, 10);
         this._stock(R.METAL, 5);
@@ -647,6 +661,7 @@
       if (eventId === "clinic_vote") {
         this.addFlag("laws-unlocked");
         this.addFlag("faction-bastion");
+        this.data.lawChangedDay = this.state.day;
         if (choiceId === "open") {
           this.data.law = L.OPEN_DOORS;
           this._standing(F.FAROS, 10);
@@ -669,13 +684,19 @@
           this._stock(R.METAL, -6);
           const count = this._recruit(2);
           this._standing(F.COBALTO, 10);
-          return "El generador vuelve a toser. " + count + " personas eligen regresar con los mecánicos a La Zona.";
+          return (
+            "El generador vuelve a toser. " +
+            count +
+            " personas eligen regresar con los mecánicos a La Zona."
+          );
         }
         if (choiceId === "evacuate") {
           this._stock(R.FOOD, -8);
           const count = this._recruit(3);
           this._standing(F.FAROS, 10);
-          return count + " supervivientes descienden por una escalera iluminada con linternas verdes.";
+          return (
+            count + " supervivientes descienden por una escalera iluminada con linternas verdes."
+          );
         }
         this._stock(R.AMMO, 8);
         this._standing(F.BASTION, 12);
@@ -706,7 +727,11 @@
           const count = this._recruit(4);
           this.citizens.adjustMorale(8);
           this._standing(F.FAROS, 8);
-          return "La voz infantil termina de leer los nombres desde la seguridad del cuartel general. Llegaron " + count + ".";
+          return (
+            "La voz infantil termina de leer los nombres desde la seguridad del cuartel general. Llegaron " +
+            count +
+            "."
+          );
         }
         if (choiceId === "guide") {
           this._stock(R.SCIENCE, 3);
@@ -809,15 +834,18 @@
         return "Hace falta recuperar una muestra viable mediante una transmisión.";
       if (stage === C.PROTOTYPE && !this.flag("trial-approved"))
         return "El prototipo necesita una decisión sobre el ensayo humano.";
-      if (!this._operationalResearch()) return "Hace falta un centro de investigación activo y con energía.";
-      if (!this._canPay(this.cureCost(stage + 1))) return "Faltan ciencia o medicina para la siguiente etapa.";
+      if (!this._operationalResearch())
+        return "Hace falta un centro de investigación activo y con energía.";
+      if (!this._canPay(this.cureCost(stage + 1)))
+        return "Faltan ciencia o medicina para la siguiente etapa.";
       return "";
     }
 
     _operationalResearch() {
       for (let i = 0; i < this.map.records.length; i++) {
         const record = this.map.records[i];
-        if (record.use === U.RESEARCH && record.active && record.hp > 0 && record.powered) return true;
+        if (record.use === U.RESEARCH && record.active && record.hp > 0 && record.powered)
+          return true;
       }
       return false;
     }
@@ -889,8 +917,7 @@
       if (this.data.law === L.RATIONS) agent.moral = Math.max(0, agent.moral - dt * 0.006);
       else if (this.data.law === L.OPEN_DOORS)
         agent.moral = Math.min(100, agent.moral + dt * 0.002);
-      else if (this.data.law === L.QUARANTINE)
-        agent.moral = Math.max(0, agent.moral - dt * 0.0015);
+      else if (this.data.law === L.QUARANTINE) agent.moral = Math.max(0, agent.moral - dt * 0.0015);
     }
 
     nightMultiplier() {
@@ -979,7 +1006,8 @@
     dismissEnding() {
       if (!this.data.endingUnread) return false;
       this.data.endingUnread = false;
-      if (this.scenario) this.scenario.paused = Boolean(this.defense.data.report || this.data.pending);
+      if (this.scenario)
+        this.scenario.paused = Boolean(this.defense.data.report || this.data.pending);
       this.state.save();
       if (this.onChanged) this.onChanged();
       return true;
@@ -1036,7 +1064,10 @@
     }
 
     _recruitCount(base) {
-      return Math.max(1, base + (this.data.law === L.OPEN_DOORS ? 1 : 0) - (this.data.law === L.QUARANTINE ? 1 : 0));
+      return Math.max(
+        1,
+        base + (this.data.law === L.OPEN_DOORS ? 1 : 0) - (this.data.law === L.QUARANTINE ? 1 : 0),
+      );
     }
 
     _recruit(base) {

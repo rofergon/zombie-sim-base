@@ -419,7 +419,11 @@
         if (id && !clean.flags.includes(id)) clean.flags.push(id);
       }
     if (Array.isArray(raw.history))
-      for (let i = Math.max(0, raw.history.length - CFG.CAMPAIGN.MAX_HISTORY); i < raw.history.length; i++) {
+      for (
+        let i = Math.max(0, raw.history.length - CFG.CAMPAIGN.MAX_HISTORY);
+        i < raw.history.length;
+        i++
+      ) {
         const entry = raw.history[i];
         if (!entry || typeof entry !== "object") continue;
         clean.history.push({

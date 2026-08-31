@@ -81,14 +81,13 @@
             count + (record.use !== CFG.BUILDING_USE.ABANDONED && record !== this.map.hq ? 1 : 0),
           0,
         );
-      this.spawnRemaining =
-        Math.ceil(
-          (CFG.HORDE.BASE_COUNT +
-            this.state.day * CFG.HORDE.PER_DAY +
-            Math.floor(population / 20) +
-            Math.floor(adapted / 3)) *
-            (this.scenario.campaign ? this.scenario.campaign.nightMultiplier() : 1),
-        );
+      this.spawnRemaining = Math.ceil(
+        (CFG.HORDE.BASE_COUNT +
+          this.state.day * CFG.HORDE.PER_DAY +
+          Math.floor(population / 20) +
+          Math.floor(adapted / 3)) *
+          (this.scenario.campaign ? this.scenario.campaign.nightMultiplier() : 1),
+      );
       this.data.pending = this.spawnRemaining;
       this.data.live = 0;
       this.spawnT = 0;

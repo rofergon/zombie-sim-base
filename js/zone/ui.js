@@ -153,6 +153,7 @@
         '<section class="zone-roster" hidden><header><strong>PATRULLAS DE CAMPO</strong><span id="zone-squad-count">0</span></header>' +
         '<div id="zone-squad-list" class="zone-squad-list"><p>No hay patrullas listas.</p></div></section>' +
         '<section class="zone-card" hidden><h2 id="zone-selection-title">Sin selección</h2>' +
+        '<div id="zone-selection-visual" class="zone-selection-visual" hidden></div>' +
         '<p id="zone-selection-meta">Haz clic en un edificio o superviviente.</p>' +
         '<p id="zone-selection-detail" class="zone-detail"></p><div id="zone-member-detail" class="zone-member-detail" hidden></div>' +
         '<button id="zone-hq-action" type="button" hidden>Establecer base aquí</button>' +
@@ -235,6 +236,7 @@
       this.phase = q("#zone-phase");
       this.objective = q("#zone-objective");
       this.title = q("#zone-selection-title");
+      this.selectionVisual = q("#zone-selection-visual");
       this.meta = q("#zone-selection-meta");
       this.detail = q("#zone-selection-detail");
       this.memberDetail = q("#zone-member-detail");
@@ -947,7 +949,7 @@
       let html =
         '<div class="zone-campaign-heading"><span class="zone-icon zi-radio"></span><span><small>' +
         campaign.actLabel +
-        '</small><b>PROYECTO AURORA</b></span></div>';
+        "</small><b>PROYECTO AURORA</b></span></div>";
       if (campaign.pending) {
         const event = campaign.pending;
         html +=
@@ -996,7 +998,8 @@
             ? cure.cost[R.SCIENCE] + " ciencia · " + cure.cost[R.MEDICINE] + " medicina"
             : cure.blockReason) +
           "</small></span></button>";
-        if (!cure.canAdvance) html += '<small class="zone-cure-block">' + cure.blockReason + "</small>";
+        if (!cure.canAdvance)
+          html += '<small class="zone-cure-block">' + cure.blockReason + "</small>";
       } else html += "<strong>FÓRMULA COMPLETA</strong>";
       html +=
         '</section><section class="zone-factions"><header><small>MUNDO HUMANO</small><h3>Redes en contacto</h3></header>';
@@ -1133,25 +1136,24 @@
             member = slot < squad.members.length ? citizens.at(squad.members[slot]) : null;
           memberSlot.className = "zone-member-slot" + (member ? "" : " empty");
           if (member) {
-            const pictogram = document.createElement("span"),
+            const portrait = document.createElement("span"),
               hp = document.createElement("i"),
               hpFill = document.createElement("em"),
               weapon = document.createElement("small");
-            pictogram.className = "zone-icon zi-worker";
+            this._setPortrait(portrait, member);
             hpFill.style.width =
               Math.max(0, Math.min(100, (member.hp / member.maxHP) * 100)).toFixed(1) + "%";
             hp.appendChild(hpFill);
             weapon.textContent = this._weaponLabel(member.weapon);
             memberSlot.title =
-              "Habitante " +
-              member.cid +
+              (member.name || "Habitante " + member.cid) +
               " · HP " +
               Math.ceil(member.hp) +
               "/" +
               member.maxHP +
               " · " +
               weapon.textContent;
-            memberSlot.append(pictogram, hp, weapon);
+            memberSlot.append(portrait, hp, weapon);
           } else memberSlot.textContent = "+";
           members.appendChild(memberSlot);
         }
@@ -1185,6 +1187,8 @@
       this.adaptActions.hidden = true;
       this.researchActions.hidden = true;
       this.commandBar.hidden = true;
+      this.selectionVisual.hidden = true;
+      this.selectionVisual.replaceChildren();
       this.memberDetail.hidden = true;
     }
 
@@ -1230,14 +1234,21 @@
       this._hideActions();
       this._showSelection();
       this.home.textContent = "⌂ centrar en la base";
-      this.title.textContent = isHQ ? "Cuartel general" : record.name;
+      const abandoned = record.use === CFG.BUILDING_USE.ABANDONED;
+      this.title.textContent = isHQ
+        ? "Cuartel general"
+        : abandoned
+          ? "Edificio abandonado"
+          : record.name;
       this.meta.textContent =
         Math.round(record.area / 100) +
         " m² · " +
         (isHQ
           ? "operativo"
-          : record.use === CFG.BUILDING_USE.ABANDONED
-            ? record.poiLabel
+          : abandoned
+            ? record.revealed
+              ? record.poiLabel + " · " + record.name
+              : "sin explorar · " + record.name
             : map.useLabel(record.use));
       if (isHQ) {
         this.detail.textContent =
@@ -1255,36 +1266,42 @@
         return;
       }
       const reachable = map.reachable(record);
-      this.jobActions.hidden = record.use !== CFG.BUILDING_USE.ABANDONED || !reachable;
+      if (abandoned) this._renderBuildingVisual(record, map);
+      this.jobActions.hidden = !abandoned || !reachable;
       this.salvage.hidden = Boolean(job) || map.materialsTotal(record) <= 0;
       this.cancelJob.hidden = !job;
       this.priority.disabled = !job;
       this.priority.value = String(job ? job.priority : CFG.PRIORITY.NORMAL);
-      const salvage = record.salvage;
       this.detail.textContent = !reachable
         ? "Sin acceso peatonal desde la base: no se asignarán trabajadores ni patrullas."
-        : "materiales M" +
-          salvage[R.WOOD] +
-          " · metal " +
-          salvage[R.METAL] +
-          " · ladrillo " +
-          salvage[R.BRICK] +
-          (job
-            ? " · " + job.assigned.length + "/" + job.capacity + " trabajadores"
-            : " · sin tarea") +
-          (job
-            ? " · " + this._jobLabel(job) + " " + this._jobProgress(job, adaptations) + "%"
-            : "") +
-          "\n" +
-          (record.revealed
-            ? "amenaza " +
-              record.infectedRemaining +
-              " · botín " +
-              map.lootTotal(record) +
-              " restante · búsqueda " +
-              Math.round((record.scavengeProgress / CFG.SCAVENGE.TICK_SECONDS) * 100) +
-              "%"
-            : "contenido y amenaza ocultos");
+        : record.revealed
+          ? "amenaza " +
+            record.infectedRemaining +
+            " · " +
+            (record.cleared ? "despejado" : "presencia hostil") +
+            (job
+              ? "\n" +
+                job.assigned.length +
+                "/" +
+                job.capacity +
+                " trabajadores · " +
+                this._jobLabel(job) +
+                " " +
+                this._jobProgress(job, adaptations) +
+                "%"
+              : "\nsin tarea de desguace")
+          : "Registro pendiente. El interior, la amenaza y sus recursos aún no se conocen." +
+            (job
+              ? "\n" +
+                job.assigned.length +
+                "/" +
+                job.capacity +
+                " trabajadores · " +
+                this._jobLabel(job) +
+                " " +
+                this._jobProgress(job, adaptations) +
+                "%"
+              : "");
       this.adaptActions.hidden = !reachable;
       const canAdapt =
         reachable &&
@@ -1316,6 +1333,104 @@
       return "machete";
     }
 
+    _setPortrait(element, member) {
+      const index = Math.abs((member.cid || 1) - 1) % 16,
+        column = index % 4,
+        row = (index / 4) | 0;
+      element.className = "zone-portrait";
+      element.style.backgroundPosition =
+        ((column / 3) * 100).toFixed(3) + "% " + ((row / 3) * 100).toFixed(3) + "%";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", "Retrato de " + (member.name || "habitante"));
+    }
+
+    _renderBuildingVisual(record, map) {
+      const banner = document.createElement("figure"),
+        image = document.createElement("img"),
+        badge = document.createElement("figcaption"),
+        progress = document.createElement("section"),
+        progressHeader = document.createElement("header"),
+        progressLabel = document.createElement("small"),
+        progressValue = document.createElement("b"),
+        progressTrack = document.createElement("i"),
+        progressFill = document.createElement("em"),
+        rack = document.createElement("section"),
+        rackHeader = document.createElement("header"),
+        rackLabel = document.createElement("small"),
+        rackValue = document.createElement("b"),
+        slots = document.createElement("div"),
+        total = map.lootTotal(record),
+        capacity = Math.max(record.lootCapacity || total, total),
+        percent = record.looted
+          ? 100
+          : record.revealed && capacity
+            ? Math.round(((capacity - total) / capacity) * 100)
+            : 0;
+      image.src = "assets/zone/scenes/abandoned-building.png";
+      image.alt = "Fachada dibujada de un edificio urbano abandonado";
+      image.decoding = "async";
+      badge.textContent = record.revealed ? record.poiLabel : "ABANDONADO · SIN EXPLORAR";
+      banner.className = "zone-building-banner";
+      banner.append(image, badge);
+      progress.className = "zone-building-progress";
+      progressLabel.textContent = record.looted ? "REGISTRO COMPLETADO" : "PROGRESO DE REGISTRO";
+      progressValue.textContent = record.revealed ? percent + "%" : "PENDIENTE";
+      progressFill.style.width = percent + "%";
+      progressTrack.appendChild(progressFill);
+      progressHeader.append(progressLabel, progressValue);
+      progress.append(progressHeader, progressTrack);
+      rack.className = "zone-resource-rack";
+      rackLabel.textContent = "RECURSOS ENCONTRADOS";
+      rackValue.textContent = record.revealed ? total + " restantes" : "?";
+      rackHeader.append(rackLabel, rackValue);
+      slots.className = "zone-resource-slots";
+      if (!record.revealed) {
+        const unknown = document.createElement("span"),
+          unknownLabel = document.createElement("small");
+        unknown.className = "zone-resource-unknown";
+        unknown.textContent = "?";
+        unknownLabel.textContent = "Envía una patrulla para descubrir el contenido";
+        slots.classList.add("unknown");
+        slots.append(unknown, unknownLabel);
+      } else {
+        for (let i = 0; i < R.COUNT; i++)
+          if (record.loot[i] > 0)
+            this._appendResourceSlot(slots, RESOURCE_ICON[i], RESOURCE_LABEL[i], record.loot[i]);
+        for (let weapon = CFG.WEAPON.PISTOL; weapon <= CFG.WEAPON.RIFLE; weapon++)
+          if (record.lootWeapons[weapon] > 0)
+            this._appendResourceSlot(
+              slots,
+              "zi-ammo",
+              this._weaponLabel(weapon),
+              record.lootWeapons[weapon],
+            );
+        if (!slots.childElementCount) {
+          const empty = document.createElement("small");
+          empty.className = "zone-resource-empty";
+          empty.textContent = "No quedan recursos recuperables.";
+          slots.appendChild(empty);
+        }
+      }
+      rack.append(rackHeader, slots);
+      this.selectionVisual.replaceChildren(banner, progress, rack);
+      this.selectionVisual.hidden = false;
+    }
+
+    _appendResourceSlot(container, iconName, label, count) {
+      const slot = document.createElement("span"),
+        icon = document.createElement("span"),
+        copy = document.createElement("span"),
+        value = document.createElement("b"),
+        name = document.createElement("small");
+      slot.className = "zone-resource-slot";
+      icon.className = "zone-icon " + iconName;
+      value.textContent = String(count);
+      name.textContent = label;
+      copy.append(value, name);
+      slot.append(icon, copy);
+      container.appendChild(slot);
+    }
+
     _jobProgress(job, adaptations) {
       if (job.type === CFG.JOB.BUILD)
         return Math.min(100, Math.round((job.progress / CFG.TASK.BUILD_SECONDS) * 100));
@@ -1342,7 +1457,8 @@
           cargo = 0,
           capacity = 0,
           ammo = 0,
-          medicine = 0;
+          medicine = 0,
+          inventory = Array.from({ length: R.COUNT }, () => 0);
         for (let i = 0; i < selectedSquads.length; i++) {
           const squad = selectedSquads[i];
           members += squad.members.length;
@@ -1350,6 +1466,8 @@
           capacity += squad.capacity;
           ammo += squad.inventory[R.AMMO];
           medicine += squad.inventory[R.MEDICINE];
+          for (let resource = 0; resource < R.COUNT; resource++)
+            inventory[resource] += squad.inventory[resource];
         }
         this.title.textContent =
           selectedSquads.length === 1
@@ -1370,6 +1488,7 @@
           " · botiquines " +
           medicine +
           "\nRMB actuar · V saquear zona · Shift+RMB añade órdenes · Ctrl+1–9 grupos";
+        this._renderSquadVisual(inventory, cargo, capacity);
         this.memberDetail.replaceChildren();
         this.memberDetail.hidden = false;
         for (let i = 0; i < selectedSquads.length; i++) {
@@ -1383,27 +1502,25 @@
               this.memberDetail.appendChild(card);
               continue;
             }
-            const icon = document.createElement("span"),
+            const portrait = document.createElement("span"),
               copy = document.createElement("span"),
               name = document.createElement("b"),
               state = document.createElement("small"),
               hp = document.createElement("i"),
               fill = document.createElement("em");
-            icon.className = "zone-icon zi-worker";
-            name.textContent = "Habitante " + member.cid + " · " + this._weaponLabel(member.weapon);
+            this._setPortrait(portrait, member);
+            name.textContent = member.name || "Habitante " + member.cid;
             state.textContent =
-              "HP " +
+              this._weaponLabel(member.weapon) +
+              " · HP " +
               Math.ceil(member.hp) +
               "/" +
-              member.maxHP +
-              " · munición compartida " +
-              squad.inventory[R.AMMO] +
-              " · a pie";
+              member.maxHP;
             fill.style.width =
               Math.max(0, Math.min(100, (member.hp / member.maxHP) * 100)).toFixed(1) + "%";
             hp.appendChild(fill);
             copy.append(name, hp, state);
-            card.append(icon, copy);
+            card.append(portrait, copy);
             this.memberDetail.appendChild(card);
           }
         }
@@ -1421,6 +1538,7 @@
         selected.length === 1 ? "Habitante " + selected[0].cid : selected.length + " habitantes";
       if (selected.length === 1) {
         const a = selected[0];
+        this._renderCitizenVisual(a);
         this.meta.textContent = ROLE_LABEL[a.role] + " · HP " + Math.ceil(a.hp) + "/" + a.maxHP;
         this.detail.textContent =
           "moral " +
@@ -1435,6 +1553,47 @@
         this.meta.textContent = freeWorkers + " trabajadores libres pueden formar una escuadra";
         this.detail.textContent = "Una escuadra acepta como máximo cuatro habitantes disponibles.";
       }
+    }
+
+    _renderSquadVisual(inventory, cargo, capacity) {
+      const rack = document.createElement("section"),
+        header = document.createElement("header"),
+        label = document.createElement("small"),
+        value = document.createElement("b"),
+        slots = document.createElement("div");
+      rack.className = "zone-resource-rack zone-squad-resource-rack";
+      label.textContent = "RECURSOS / CAPACIDAD";
+      value.textContent = cargo + " / " + capacity;
+      header.append(label, value);
+      slots.className = "zone-resource-slots";
+      for (let i = 0; i < R.COUNT; i++)
+        if (inventory[i] > 0)
+          this._appendResourceSlot(slots, RESOURCE_ICON[i], RESOURCE_LABEL[i], inventory[i]);
+      if (!slots.childElementCount) {
+        const empty = document.createElement("small");
+        empty.className = "zone-resource-empty";
+        empty.textContent = "La patrulla no lleva recursos.";
+        slots.appendChild(empty);
+      }
+      rack.append(header, slots);
+      this.selectionVisual.replaceChildren(rack);
+      this.selectionVisual.hidden = false;
+    }
+
+    _renderCitizenVisual(citizen) {
+      const card = document.createElement("section"),
+        portrait = document.createElement("span"),
+        copy = document.createElement("span"),
+        name = document.createElement("b"),
+        detail = document.createElement("small");
+      card.className = "zone-citizen-portrait-card";
+      this._setPortrait(portrait, citizen);
+      name.textContent = citizen.name || "Habitante " + citizen.cid;
+      detail.textContent = "Llegó el día " + citizen.arrivalDay;
+      copy.append(name, detail);
+      card.append(portrait, copy);
+      this.selectionVisual.replaceChildren(card);
+      this.selectionVisual.hidden = false;
     }
 
     showNone(hasHQ) {

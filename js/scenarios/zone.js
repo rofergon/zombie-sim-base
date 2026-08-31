@@ -215,13 +215,8 @@
       this.fortifications.connect(this, this.agents, () => this._markUI());
       this.regions.connect(() => this._markUI());
       this.citizens.connectCampaign(this.campaign);
-      this.campaign.connect(
-        this.citizens,
-        this.adaptations,
-        this.defense,
-        this.regions,
-        this,
-        () => this._markUI(),
+      this.campaign.connect(this.citizens, this.adaptations, this.defense, this.regions, this, () =>
+        this._markUI(),
       );
       this.tasks.reconcile();
       this._markUI();
@@ -696,7 +691,11 @@
 
     resolveCampaignChoice(eventId, choiceId) {
       const result = this.campaign.choose(eventId, choiceId);
-      this.ui.toast(result ? "La decisión queda registrada en el diario de la Zona." : "Esa opción no está disponible.");
+      this.ui.toast(
+        result
+          ? "La decisión queda registrada en el diario de la Zona."
+          : "Esa opción no está disponible.",
+      );
       this._markUI();
       return result;
     }
@@ -704,9 +703,7 @@
     advanceCampaignCure() {
       const result = this.campaign.advanceCure();
       this.ui.toast(
-        result
-          ? "Proyecto Aurora avanza a una nueva etapa."
-          : this.campaign.cureBlockReason(),
+        result ? "Proyecto Aurora avanza a una nueva etapa." : this.campaign.cureBlockReason(),
       );
       this._markUI();
       return result;
@@ -1670,7 +1667,7 @@
           id: null,
         });
       if (this.campaign.data.pending)
-        alerts.unshift({
+        alerts.push({
           kind: "radio",
           title: "Transmisión pendiente",
           detail: "La campaña espera una decisión",

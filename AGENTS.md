@@ -70,7 +70,7 @@ names the events)
 js/main.js bootstrap: world, camera, input, main loop
 
 `zone.html` additionally loads
-`js/zone/{config,state,map,orders,citizens,tasks,squads,scavenge,ui}.js` and
+`js/zone/{config,state,map,orders,citizens,tasks,squads,scavenge,campaign,ui}.js` and
 `js/scenarios/zone.js`. It loads the zombie scenario class as a drawing
 dependency so Zone people and encounter infected call the frozen
 `ScenarioZombie.draw` directly.
@@ -340,11 +340,15 @@ and twelve workers). Vehicles, trade, factions, laws and OSM remain later work.
   night recalls and restocks squads, targets citizens or persistent structures,
   and ends in a dawn report. Saves keep abstract unspawned/living counts rather
   than transient horde agents.
+- **Human campaign** (`js/zone/campaign.js`): stable event/choice IDs drive
+  named recruitment, three faction standings, daily trade, settlement laws,
+  Project Aurora cure stages and persistent endings. Open endings modify the
+  existing night-defense pressure instead of spawning a second combat system.
 - **Resource invariant**: stock + worker cargo + squad inventories + building
   caches changes only through explicit food, ammunition or medicine use.
-- **Verification**: `tests/zone-workers.js`, `tests/zone-squads.js` and
-  `tests/zone-colony.js` extend the four-page smoke and phase-0/1 regression
-  suites, always through `file://`.
+- **Verification**: `tests/zone-workers.js`, `tests/zone-squads.js`,
+  `tests/zone-colony.js` and `tests/zone-campaign.js` extend the four-page smoke
+  and phase-0/1 regression suites, always through `file://`.
 
 ## Style system (`js/sketch.js`)
 

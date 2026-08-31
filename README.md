@@ -18,7 +18,7 @@ cuatro experiencias se pueden abrir directamente desde el sistema de archivos.
 | [`index.html`](./index.html) | **El brote** | Una población intenta sobrevivir a oleadas de infectados en un pueblo procedural. Incluye refugios, escuadras de defensa, torretas, fuego, granadas y ataques de artillería. |
 | [`battle.html`](./battle.html) | **Canas, 216 a. C.** | Recreación sistémica de la batalla de Cannas con 781 figuras, formaciones, caballería, moral, retirada y envolvimiento. |
 | [`hold.html`](./hold.html) | **La Fortaleza** | Defensa de base sobre una cuadrícula de 40 × 30: excava el terreno, construye muros y edificios, mejora a los soldados y resiste noches de 90 segundos. |
-| [`zone.html`](./zone.html) | **La Zona** | RTS de supervivencia y colonia con ciudadanos persistentes, trabajos, escuadras, saqueo, producción, investigación, fortificaciones, hordas nocturnas y expediciones regionales. Puede usar mapas procedurales o cartografía real de OpenStreetMap. |
+| [`zone.html`](./zone.html) | **La Zona** | RTS de supervivencia y colonia con ciudadanos persistentes, trabajos, escuadras, saqueo, producción, fortificaciones, hordas y expediciones. Su campaña original Proyecto Aurora incluye rescates, facciones, comercio, leyes, una cura y finales alternativos. Puede usar mapas procedurales o cartografía real de OpenStreetMap. |
 
 ## Cómo ejecutarlo
 
@@ -132,6 +132,7 @@ npm run test:zone          # regresión base y migraciones de La Zona
 npm run test:zone-workers  # ciudadanos, tareas y conservación de recursos
 npm run test:zone-squads   # órdenes, patrullas, inventario y encuentros
 npm run test:zone-colony   # producción, investigación y defensa nocturna
+npm run test:zone-campaign # eventos, población, facciones, cura y finales
 npm run test:zone-geo      # mapas, migraciones geográficas y expediciones
 ```
 
