@@ -12,6 +12,7 @@
   const LABEL = Object.freeze({
     [K.FIELD]: "campo",
     [K.VAST_FIELD]: "campo extenso",
+    [K.GROVE]: "plantación forestal",
   });
 
   class ZoneAgriculture {
@@ -42,7 +43,7 @@
           field.x > world.w ||
           field.y > world.h ||
           field.kind < K.FIELD ||
-          field.kind > K.VAST_FIELD
+          field.kind >= K.COUNT
         )
           this.list.splice(i, 1);
       }
@@ -107,7 +108,7 @@
 
     isUnlocked(kind) {
       return (
-        kind >= K.FIELD && kind <= K.VAST_FIELD && Boolean(this.state.zone.tech[T.AGRICULTURE])
+        kind >= K.FIELD && kind < K.COUNT && Boolean(this.state.zone.tech[T.AGRICULTURE])
       );
     }
 
@@ -207,7 +208,13 @@
     }
 
     toggleFertilizer(field) {
-      if (!field || field.hp <= 0 || !this.state.zone.tech[T.FERTILIZATION]) return false;
+      if (
+        !field ||
+        field.kind === K.GROVE ||
+        field.hp <= 0 ||
+        !this.state.zone.tech[T.FERTILIZATION]
+      )
+        return false;
       field.fertilized = !field.fertilized;
       if (this.onChanged) this.onChanged();
       return true;
@@ -270,6 +277,8 @@
 
     canProduce(field) {
       if (!field || !field.active || field.hp <= 0) return false;
+      if (field.kind === K.GROVE)
+        return !this.logistics || this.logistics.canFit(A.WOOD[field.kind]);
       const fertilized = field.fertilized && this.state.zone.tech[T.FERTILIZATION],
         output = fertilized ? A.FERTILIZED_GRAIN[field.kind] : A.GRAIN[field.kind];
       if (this.logistics && !this.logistics.canFit(output)) return false;
@@ -282,6 +291,11 @@
 
     produce(field) {
       if (!this.canProduce(field)) return false;
+      if (field.kind === K.GROVE) {
+        if (this.logistics) this.logistics.deposit(R.WOOD, A.WOOD[field.kind]);
+        else this.state.stock[R.WOOD] += A.WOOD[field.kind];
+        return true;
+      }
       const fertilized = field.fertilized && this.state.zone.tech[T.FERTILIZATION];
       if (fertilized) this.state.stock[R.FERTILIZER] -= A.FERTILIZER[field.kind];
       const output = fertilized ? A.FERTILIZED_GRAIN[field.kind] : A.GRAIN[field.kind];
@@ -293,6 +307,11 @@
     productionStatus(field) {
       if (!field || field.hp <= 0) return "destruido";
       if (!field.active) return "pausado";
+      if (field.kind === K.GROVE) {
+        if (this.logistics && !this.logistics.canFit(A.WOOD[field.kind]))
+          return "sin espacio de almacén";
+        return "plantando y podando";
+      }
       const fertilized = field.fertilized && this.state.zone.tech[T.FERTILIZATION],
         output = fertilized ? A.FERTILIZED_GRAIN[field.kind] : A.GRAIN[field.kind];
       if (this.logistics && !this.logistics.canFit(output)) return "sin espacio de almacén";
@@ -358,7 +377,7 @@
       for (let iy = 0; iy < samples.length; iy++)
         for (let ix = 0; ix < samples.length; ix++) {
           const index = this.nav.idx(x + samples[ix], y + samples[iy]);
-          if (index < 0 || this.nav.val[index] !== 1) return false;
+          if (index < 0 || this.nav.val[index] !== 1 || this.nav.road[index]) return false;
         }
       return true;
     }
@@ -400,9 +419,11 @@
         c.fillStyle =
           field.hp <= 0
             ? "rgba(94,72,54,0.12)"
-            : field.fertilized
-              ? "rgba(112,148,72,0.18)"
-              : "rgba(142,116,72,0.13)";
+            : field.kind === K.GROVE
+              ? "rgba(91,132,67,0.16)"
+              : field.fertilized
+                ? "rgba(112,148,72,0.18)"
+                : "rgba(142,116,72,0.13)";
         c.fillRect(field.x - half, field.y - half, size, size);
         c.strokeStyle = field.hp <= 0 ? "rgba(150,62,48,0.6)" : "rgba(91,74,50,0.72)";
         c.lineWidth = 1.5;
@@ -417,10 +438,12 @@
           growth = job && Number.isFinite(seconds) ? Math.min(1, job.progress / seconds) : 0;
         c.strokeStyle = growth > 0.55 ? "rgba(79,105,55,0.72)" : "rgba(111,83,50,0.48)";
         c.lineWidth = 1 + growth * 1.2;
-        for (let row = 1; row <= rows; row++) {
-          const px = field.x - half + (row / (rows + 1)) * size;
-          ZS.wline(c, px, field.y - half + 7, px, field.y + half - 7, seed + 10 + row, 0.9);
-        }
+        if (field.kind === K.GROVE) this._drawGrove(c, field, growth, seed, size);
+        else
+          for (let row = 1; row <= rows; row++) {
+            const px = field.x - half + (row / (rows + 1)) * size;
+            ZS.wline(c, px, field.y - half + 7, px, field.y + half - 7, seed + 10 + row, 0.9);
+          }
         if (field.hp <= 0) {
           c.strokeStyle = "rgba(150,62,48,0.72)";
           ZS.wline(
@@ -444,6 +467,22 @@
         }
       }
       c.restore();
+    }
+
+    _drawGrove(c, field, growth, seed, size) {
+      const canopy = 4 + growth * 7;
+      c.fillStyle = "rgba(112,148,72,0.28)";
+      for (let tree = 0; tree < 9; tree++) {
+        const x = field.x + ((tree % 3) - 1) * size * 0.25,
+          y = field.y + (((tree / 3) | 0) - 1) * size * 0.25,
+          top = y - 5 - growth * 8;
+        c.strokeStyle = "rgba(96,74,50,0.82)";
+        c.lineWidth = 1.2;
+        ZS.wline(c, x, y + 4, x + ZS.sjit(seed + tree) * 1.5, top, seed + 80 + tree, 0.5);
+        c.strokeStyle = "rgba(74,108,48,0.76)";
+        ZS.wcirc(c, x, top, canopy, seed + 100 + tree * 7, 1.1);
+        c.fill();
+      }
     }
 
     drawOverlay(c, showAll) {

@@ -94,7 +94,7 @@
     COUNT: 8,
   });
 
-  const FARM_KIND = Object.freeze({ FIELD: 1, VAST_FIELD: 2, COUNT: 3 });
+  const FARM_KIND = Object.freeze({ FIELD: 1, VAST_FIELD: 2, GROVE: 3, COUNT: 4 });
   const RECIPE = Object.freeze({ GRAIN: 1, MEAT: 2 });
 
   const ORDER = Object.freeze({
@@ -361,14 +361,16 @@
       COSTS: Object.freeze({
         1: Object.freeze([0, 4, 1, 0, 0, 0, 0, 0, 0, 0]),
         2: Object.freeze([0, 16, 4, 0, 0, 0, 0, 0, 0, 0]),
+        3: Object.freeze([0, 2, 0, 0, 0, 0, 0, 0, 0, 0]),
       }),
-      SIZE: Object.freeze([0, 80, 160]),
-      WORKERS: Object.freeze([0, 2, 8]),
-      HP: Object.freeze([0, 70, 180]),
-      SECONDS: Object.freeze([0, 90, 360]),
-      GRAIN: Object.freeze([0, 4, 16]),
-      FERTILIZED_GRAIN: Object.freeze([0, 7, 28]),
-      FERTILIZER: Object.freeze([0, 1, 4]),
+      SIZE: Object.freeze([0, 80, 160, 80]),
+      WORKERS: Object.freeze([0, 2, 8, 2]),
+      HP: Object.freeze([0, 70, 180, 100]),
+      SECONDS: Object.freeze([0, 90, 360, 180]),
+      GRAIN: Object.freeze([0, 4, 16, 0]),
+      FERTILIZED_GRAIN: Object.freeze([0, 7, 28, 0]),
+      FERTILIZER: Object.freeze([0, 1, 4, 0]),
+      WOOD: Object.freeze([0, 0, 0, 8]),
     }),
     CAMPAIGN: Object.freeze({
       MAX_HISTORY: 24,

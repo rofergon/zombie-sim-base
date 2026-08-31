@@ -76,6 +76,18 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
           }
       const field = point && scenario.agriculture.place(point.x, point.y, K.FIELD),
         fieldJob = field && scenario.tasks.forField(field.id);
+      let grovePoint = null;
+      for (let radius = 160; radius <= 960 && !grovePoint; radius += 40)
+        for (let y = hq.cy - radius; y <= hq.cy + radius && !grovePoint; y += 40)
+          for (let x = hq.cx - radius; x <= hq.cx + radius; x += 40) {
+            if (Math.max(Math.abs(x - hq.cx), Math.abs(y - hq.cy)) !== radius) continue;
+            if (scenario.agriculture.canPlace(x, y, K.GROVE)) {
+              grovePoint = { x, y };
+              break;
+            }
+          }
+      const grove = grovePoint && scenario.agriculture.place(grovePoint.x, grovePoint.y, K.GROVE),
+        groveJob = grove && scenario.tasks.forField(grove.id);
       field.fertilized = true;
       const fieldBefore = {
         grain: scenario.state.stock[R.GRAIN],
@@ -122,6 +134,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
           grain: scenario.state.stock[R.GRAIN],
           fertilizer: scenario.state.stock[R.FERTILIZER],
         };
+      const groveWoodBefore = scenario.state.stock[R.WOOD],
+        groveProduced = scenario.agriculture.produce(grove),
+        groveWoodAfter = scenario.state.stock[R.WOOD];
 
       scenario.state.day = 19;
       const weather = { ...scenario.agriculture.weather() },
@@ -143,6 +158,10 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         researched,
         fieldId: field.id,
         fieldJobCapacity: fieldJob.capacity,
+        groveId: grove.id,
+        groveJobCapacity: groveJob.capacity,
+        groveProduced,
+        groveWood: groveWoodAfter - groveWoodBefore,
         fieldProduced,
         fieldBefore,
         fieldAfter,
@@ -166,6 +185,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     assert.deepEqual(farming.researched, [true, true, true, true]);
     assert.equal(farming.fieldJobCapacity, 2);
+    assert.equal(farming.groveJobCapacity, 2);
+    assert.equal(farming.groveProduced, true);
+    assert.equal(farming.groveWood, 8);
     assert.equal(farming.fieldProduced, true);
     assert.equal(farming.fieldAfter.grain - farming.fieldBefore.grain, 7);
     assert.equal(farming.fieldBefore.fertilizer - farming.fieldAfter.fertilizer, 1);
@@ -186,13 +208,14 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     await sim.page.goto(pageUrl("zone.html", { seed: 1, record: 1 }));
     await sim.page.waitForFunction(() => ZS.scenario && ZS.scenario.map.hq);
-    const restored = await sim.page.evaluate(({ fieldId, buildingIds }) => {
+    const restored = await sim.page.evaluate(({ fieldId, groveId, buildingIds }) => {
       const scenario = ZS.scenario,
         CFG = ZS.ZoneConfig;
       return {
         version: CFG.SAVE_VERSION,
         resources: scenario.state.stock.length,
         field: scenario.agriculture.at(fieldId),
+        grove: scenario.agriculture.at(groveId),
         fieldJob: scenario.tasks.forField(fieldId),
         uses: buildingIds.map((id) => scenario.map.at(id).use),
         recipe: scenario.map.at(buildingIds[1]).recipe,
@@ -202,6 +225,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(restored.version, 16);
     assert.equal(restored.resources, 11);
     assert.equal(restored.field.kind, 1);
+    assert.equal(restored.grove.kind, 3);
     assert.equal(restored.field.fertilized, true);
     assert.equal(restored.fieldJob.capacity, 2);
     assert.deepEqual(restored.uses, [11, 4, 9]);

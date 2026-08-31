@@ -9,6 +9,26 @@
   const P = CFG.POI;
   const DEMOLITION_SECONDS = 0.48;
   const STATUS = Object.freeze({ BUILT: "built", BUILD: "build", SALVAGE: "salvage" });
+  const GREEN_LAND = Object.freeze([
+    "forest",
+    "orchard",
+    "grass",
+    "meadow",
+    "recreation_ground",
+    "village_green",
+  ]);
+  const GREEN_NATURAL = Object.freeze(["wood", "scrub", "grassland"]);
+
+  function pointInPoly(x, y, points) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i],
+        b = points[j];
+      if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x)
+        inside = !inside;
+    }
+    return inside;
+  }
 
   const USE_LABEL = Object.freeze({
     [USE.ABANDONED]: "abandonado",
@@ -135,9 +155,67 @@
       for (let i = 0; i < pack.roads.length; i++)
         nav.markRoad(pack.roads[i].points, pack.roads[i].width);
       ZS.Buildings.load(world, nav, pack.buildings);
+      this._placeUrbanTrees(world, pack);
       this._bindBuildings(world.buildings);
       this._makeContours(pack.elevation, world.w, world.h);
       world.zoneMap = this;
+    }
+
+    _placeUrbanTrees(world, pack) {
+      const rng = ZS.rng32(world.seed ^ 0x74726565),
+        target = Math.min(240, Math.max(48, Math.round((world.w * world.h) / 200000))),
+        add = (x, y, clearance) => {
+          if (world.trees.length >= target || !this._urbanTreeClear(x, y, clearance)) return false;
+          const before = world.trees.length;
+          world.placeTree(x, y, rng);
+          return world.trees.length > before;
+        };
+      for (let i = 0; i < pack.land.length && world.trees.length < target; i++) {
+        const feature = pack.land[i],
+          tags = feature.tags || {};
+        if (
+          !GREEN_LAND.includes(tags.landuse) &&
+          !GREEN_NATURAL.includes(tags.natural) &&
+          !["park", "garden", "nature_reserve"].includes(tags.leisure)
+        )
+          continue;
+        const bounds = feature.bounds,
+          attempts = Math.min(
+            120,
+            Math.max(8, Math.round(((bounds.x1 - bounds.x0) * (bounds.y1 - bounds.y0)) / 2400)),
+          );
+        for (let attempt = 0; attempt < attempts && world.trees.length < target; attempt++) {
+          const x = bounds.x0 + rng() * (bounds.x1 - bounds.x0),
+            y = bounds.y0 + rng() * (bounds.y1 - bounds.y0);
+          if (pointInPoly(x, y, feature.points)) add(x, y, 18);
+        }
+      }
+      const step = 300;
+      for (let y = step / 2; y < world.h && world.trees.length < target; y += step)
+        for (let x = step / 2; x < world.w && world.trees.length < target; x += step) {
+          if (rng() > 0.42) continue;
+          const gx = x + (rng() - 0.5) * 120,
+            gy = y + (rng() - 0.5) * 120;
+          if (!this._urbanTreeClear(gx, gy, 54)) continue;
+          const count = 3 + ((rng() * 4) | 0);
+          for (let tree = 0; tree < count; tree++)
+            add(gx + (rng() - 0.5) * 110, gy + (rng() - 0.5) * 110, 14);
+        }
+    }
+
+    _urbanTreeClear(x, y, clearance) {
+      if (!this.nav || !this.world) return false;
+      const samples = [-clearance, 0, clearance];
+      for (let iy = 0; iy < samples.length; iy++)
+        for (let ix = 0; ix < samples.length; ix++) {
+          const index = this.nav.idx(x + samples[ix], y + samples[iy]);
+          if (index < 0 || this.nav.val[index] !== 1 || this.nav.road[index]) return false;
+        }
+      for (let i = 0; i < this.world.trees.length; i++) {
+        const tree = this.world.trees[i];
+        if (Math.hypot(tree.x - x, tree.y - y) < 28) return false;
+      }
+      return true;
     }
 
     _expandProceduralTowns(world) {

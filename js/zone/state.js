@@ -527,7 +527,7 @@
     const kind = clamp(
         intOr(raw.kind, CFG.FARM_KIND.FIELD),
         CFG.FARM_KIND.FIELD,
-        CFG.FARM_KIND.VAST_FIELD,
+        CFG.FARM_KIND.GROVE,
       ),
       maxHP = Math.max(1, numberOr(raw.maxHP, CFG.AGRICULTURE.HP[kind]));
     return {

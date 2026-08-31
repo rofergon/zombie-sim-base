@@ -1510,7 +1510,7 @@
     armField(kind) {
       if (!this.map.hq) return false;
       if (kind !== 0 && !this.agriculture.isUnlocked(kind)) {
-        this.ui.toast("Investiga Agricultura antes de preparar campos.");
+        this.ui.toast("Investiga Agricultura antes de preparar cultivos o plantaciones.");
         return false;
       }
       this.commandMode = kind === 0 ? "farm:remove" : "farm:" + kind;
@@ -1518,7 +1518,7 @@
       this.ui.setCommandMode(this.commandMode);
       this.ui.toast(
         kind === 0
-          ? "Elige un campo para retirarlo y recuperar la mitad del coste."
+          ? "Elige un cultivo o plantación para retirarlo y recuperar la mitad del coste."
           : "Coloca " +
               this.agriculture.label(kind) +
               " sobre terreno libre · clic derecho o Escape cancela.",

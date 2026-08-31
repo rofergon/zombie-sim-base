@@ -148,6 +148,10 @@
     return out;
   }
 
+  function greenNatural(tags) {
+    return ["wood", "scrub", "grassland"].includes(tags.natural);
+  }
+
   function poiFromTags(tags) {
     const amenity = tags.amenity || "",
       shop = tags.shop || "",
@@ -305,7 +309,15 @@
     for (let i = 0; i < relations.length; i++) {
       const relation = relations[i],
         tags = selectedTags(relation.tags);
-      if (!tags.building && tags.natural !== "water" && !tags.water && !tags.landuse) continue;
+      if (
+        !tags.building &&
+        tags.natural !== "water" &&
+        !tags.water &&
+        !tags.landuse &&
+        !tags.leisure &&
+        !greenNatural(tags)
+      )
+        continue;
       for (let j = 0; j < relation.members.length; j++)
         if (relation.members[j].type === "way") relationWayIds.add(relation.members[j].ref);
       const rings = relationRings(relation, "outer");
@@ -317,7 +329,8 @@
           buildings.push({ sourceKey: "r/" + relation.id + ":" + j, points, bounds, tags });
         else if (tags.natural === "water" || tags.water || tags.waterway)
           waters.push({ sourceKey: "r/" + relation.id + ":" + j, points, bounds, tags });
-        else if (tags.landuse || tags.leisure) land.push({ points, bounds, tags });
+        else if (tags.landuse || tags.leisure || greenNatural(tags))
+          land.push({ points, bounds, tags });
       }
     }
 
@@ -345,7 +358,11 @@
         (tags.natural === "water" || tags.water || tags.waterway === "riverbank")
       )
         waters.push({ sourceKey: "w/" + way.id, points, bounds, tags });
-      else if (!relationWayIds.has(way.id) && points.length >= 3 && (tags.landuse || tags.leisure))
+      else if (
+        !relationWayIds.has(way.id) &&
+        points.length >= 3 &&
+        (tags.landuse || tags.leisure || greenNatural(tags))
+      )
         land.push({ points, bounds, tags });
     }
 
@@ -807,6 +824,9 @@
         box +
         ");" +
         'nwr["natural"="water"](' +
+        box +
+        ");" +
+        'nwr["natural"~"wood|scrub|grassland"](' +
         box +
         ");" +
         'nwr["water"](' +

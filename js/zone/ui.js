@@ -106,7 +106,7 @@
     resources: ["Recolección", "zi-wood"],
     citizens: ["Habitantes", "zi-worker"],
     research: ["Investigación", "zi-research"],
-    agriculture: ["Cultivos", "zi-grain"],
+    agriculture: ["Cultivos y bosques", "zi-grain"],
     economy: ["Economía", "zi-production"],
     laws: ["Leyes", "zi-laws"],
     radio: ["Radio", "zi-radio"],
@@ -1290,11 +1290,16 @@
         " · campos al " +
         Math.round(weather.rate * 100) +
         "% · los invernaderos no sufren penalización</small></span></div>" +
-        '<div class="zone-food-chain"><b>cadena alimentaria</b><span>campo / invernadero → grano</span><span>granero: 2 grano → 2 carne + 1 fertilizante</span><span>cocina: 2 grano + madera → 4 raciones</span><span>cocina: 2 carne + madera → 5 raciones</span></div>' +
+        '<div class="zone-food-chain"><b>producción renovable</b><span>campo / invernadero → grano</span><span>plantación forestal → madera</span><span>granero: 2 grano → 2 carne + 1 fertilizante</span><span>cocina: grano o carne + madera → raciones</span></div>' +
         '<div class="zone-field-builders">';
-      for (let kind = CFG.FARM_KIND.FIELD; kind <= CFG.FARM_KIND.VAST_FIELD; kind++) {
+      for (let kind = CFG.FARM_KIND.FIELD; kind < CFG.FARM_KIND.COUNT; kind++) {
         const cost = CFG.AGRICULTURE.COSTS[kind],
-          label = kind === CFG.FARM_KIND.FIELD ? "Campo" : "Campo extenso",
+          grove = kind === CFG.FARM_KIND.GROVE,
+          label = grove
+            ? "Plantación forestal"
+            : kind === CFG.FARM_KIND.FIELD
+              ? "Campo"
+              : "Campo extenso",
           workers = CFG.AGRICULTURE.WORKERS[kind],
           affordable = model.stock[R.WOOD] >= cost[R.WOOD] && model.stock[R.METAL] >= cost[R.METAL];
         html +=
@@ -1302,7 +1307,9 @@
           kind +
           '" ' +
           (farmingUnlocked && affordable ? "" : "disabled") +
-          '><span class="zone-icon zi-grain"></span><span><b>' +
+          '><span class="zone-icon ' +
+          (grove ? "zi-wood" : "zi-grain") +
+          '"></span><span><b>' +
           label +
           "</b><small>" +
           workers +
@@ -1314,16 +1321,16 @@
           "</small></span></button>";
       }
       html +=
-        '<button type="button" data-field-remove><span class="zone-icon zi-build"></span><span><b>Retirar campo</b><small>reembolsa la mitad de materiales</small></span></button></div>';
+        '<button type="button" data-field-remove><span class="zone-icon zi-build"></span><span><b>Retirar cultivo</b><small>también retira plantaciones; reembolsa la mitad</small></span></button></div>';
       html +=
-        '<h3 class="zone-system-subtitle">CAMPOS EN EL MAPA</h3><div class="zone-agriculture-list">';
+        '<h3 class="zone-system-subtitle">CULTIVOS Y PLANTACIONES</h3><div class="zone-agriculture-list">';
       for (let i = 0; i < agriculture.fields.length; i++) {
         const field = agriculture.fields[i],
           job = this._agricultureJob(model.jobs, "field", field.id),
           seconds = agriculture.controller.productionSeconds(field),
           progress =
             job && Number.isFinite(seconds) ? Math.min(100, (job.progress / seconds) * 100) : 0,
-          label = field.kind === CFG.FARM_KIND.VAST_FIELD ? "Campo extenso " : "Campo ",
+          label = agriculture.controller.label(field.kind) + " ",
           status = agriculture.controller.productionStatus(field);
         html +=
           '<article class="zone-agriculture-row"><header><button type="button" data-field-focus="' +
@@ -1345,16 +1352,20 @@
           field.id +
           '">prioridad ' +
           (job ? job.priority : 0) +
-          '</button><button type="button" data-field-action="fertilizer" data-field-id="' +
-          field.id +
-          '" ' +
-          (fertilizationUnlocked && field.hp > 0 ? "" : "disabled") +
-          ">" +
-          (field.fertilized ? "con fertilizante · 7 grano" : "sin fertilizante · 4 grano") +
-          "</button></footer></article>";
+          "</button>";
+        if (field.kind !== CFG.FARM_KIND.GROVE)
+          html +=
+            '<button type="button" data-field-action="fertilizer" data-field-id="' +
+            field.id +
+            '" ' +
+            (fertilizationUnlocked && field.hp > 0 ? "" : "disabled") +
+            ">" +
+            (field.fertilized ? "con fertilizante · 7 grano" : "sin fertilizante · 4 grano") +
+            "</button>";
+        html += "</footer></article>";
       }
       if (!agriculture.fields.length)
-        html += '<p class="zone-system-empty">No hay campos preparados.</p>';
+        html += '<p class="zone-system-empty">No hay cultivos ni plantaciones preparados.</p>';
       html +=
         '</div><h3 class="zone-system-subtitle">EDIFICIOS DE ALIMENTACIÓN</h3><div class="zone-agriculture-list">';
       for (let i = 0; i < agriculture.buildings.length; i++) {

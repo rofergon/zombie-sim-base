@@ -523,6 +523,15 @@ function denseOsmFixture() {
     assert.equal(await previewPage.evaluate(() => Boolean(window.ZS.debug)), false);
     await previewPage.locator(".zone-osm-start").click();
     await previewPage.waitForFunction(() => window.ZS && ZS.debug && ZS.debug.world.w === 7200);
+    const urbanForest = await previewPage.evaluate(() => ({
+      trees: ZS.debug.world.trees.length,
+      roadTrees: ZS.debug.world.trees.filter((tree) => {
+        const index = ZS.debug.nav.idx(tree.x, tree.y);
+        return index >= 0 && ZS.debug.nav.road[index];
+      }).length,
+    }));
+    assert.ok(urbanForest.trees > 0);
+    assert.equal(urbanForest.roadTrees, 0);
     assertNoErrors(previewErrors, "geographic selector preview");
     await previewContext.close();
     process.stdout.write("✓ real vector preview and 1×1 / 3×3 / 5×5 sector grids\n");
