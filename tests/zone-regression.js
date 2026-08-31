@@ -14,7 +14,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     const migration = await sim.page.evaluate(() =>
       ZS.ZoneSave.migrate({ v: 1, seed: 91, day: 4, minute: 75, hq: 3 }),
     );
-    assert.equal(migration.v, 11);
+    assert.equal(migration.v, 12);
     assert.equal(migration.world.source, "procedural");
     assert.equal(migration.world.size, "classic");
     assert.equal(migration.world.seed, 91);
@@ -56,6 +56,45 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(await sim.page.locator("#zone-selection-title").textContent(), "Cuartel general");
     assert.equal(await sim.page.locator(".zone-main-dock").isVisible(), true);
     assert.equal(await sim.page.locator(".zone-metric").count(), 10);
+    await sim.page.locator('[data-speed="0"]').click();
+    const salvageYield = await sim.page.evaluate(() => {
+      const scenario = ZS.scenario,
+        R = ZS.ZoneConfig.RESOURCE,
+        target = scenario.map.records.find(
+          (record) =>
+            record !== scenario.map.hq &&
+            scenario.map.reachable(record) &&
+            scenario.map.materialsTotal(record) > 0,
+        );
+      scenario.debugSelectBuilding(target.id);
+      return {
+        wood: target.salvage[R.WOOD],
+        metal: target.salvage[R.METAL],
+        brick: target.salvage[R.BRICK],
+        total: scenario.map.materialsTotal(target),
+      };
+    });
+    const salvageButton = sim.page.locator("#zone-salvage"),
+      salvagePreview = sim.page.locator("#zone-salvage-preview");
+    assert.equal(await salvageButton.getAttribute("aria-label"), "Desguazar edificio");
+    assert.equal(await salvagePreview.isVisible(), false);
+    await salvageButton.hover();
+    assert.equal(await salvagePreview.isVisible(), true);
+    assert.deepEqual(
+      await sim.page.evaluate(() => ({
+        wood: Number(document.querySelector("#zone-salvage-wood").textContent),
+        metal: Number(document.querySelector("#zone-salvage-metal").textContent),
+        brick: Number(document.querySelector("#zone-salvage-brick").textContent),
+        total: Number(document.querySelector("#zone-salvage-total").textContent),
+      })),
+      salvageYield,
+    );
+    await sim.page.mouse.move(640, 400);
+    assert.equal(await salvagePreview.isVisible(), false);
+    await salvageButton.focus();
+    assert.equal(await salvagePreview.isVisible(), true);
+    await salvageButton.blur();
+    await sim.page.locator('[data-speed="1"]').click();
     await sim.page.locator('[data-system="economy"]').first().click();
     assert.equal(await sim.page.locator("#zone-system-title").textContent(), "Economía");
     assert.equal(await sim.page.locator(".zone-system-panel").isVisible(), true);

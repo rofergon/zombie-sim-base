@@ -15,7 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         zone: { hqId: 2, initialized: false, buildings: [] },
       }),
     );
-    assert.equal(migrated.v, 11);
+    assert.equal(migrated.v, 12);
     assert.equal(migrated.world.seed, 77);
     assert.equal(migrated.zone.tech.length, 8);
     assert.equal(migrated.zone.defense.active, false);
@@ -56,12 +56,21 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         return job;
       }
 
+      function completeResearch(record, tech) {
+        if (!scenario.adaptations.research(tech)) return false;
+        const job = scenario.tasks.forBuilding(record.id),
+          worker = scenario.citizens.at(job.assigned[0]);
+        scenario.state.zone.research.progress = CFG.RESEARCH.WORK[tech];
+        scenario.tasks._work(worker, job, 0.01);
+        return scenario.state.zone.tech[tech];
+      }
+
       complete(targets[0], U.RESEARCH);
       const science0 = scenario.state.stock[R.SCIENCE];
-      const agriculture = scenario.adaptations.research(T.AGRICULTURE),
-        greenhousesTech = scenario.adaptations.research(T.GREENHOUSES),
-        powerTech = scenario.adaptations.research(T.POWER),
-        fortificationsTech = scenario.adaptations.research(T.FORTIFICATIONS);
+      const agriculture = completeResearch(targets[0], T.AGRICULTURE),
+        greenhousesTech = completeResearch(targets[0], T.GREENHOUSES),
+        powerTech = completeResearch(targets[0], T.POWER),
+        fortificationsTech = completeResearch(targets[0], T.FORTIFICATIONS);
       complete(targets[1], U.POWER);
       complete(targets[2], U.FARM);
       scenario.adaptations.recalculatePower();
@@ -440,7 +449,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     assertNoErrors(sim.errors, "zone colony");
     process.stdout.write(
-      "✓ v5 → v6 → v7 → v8 → v9 → v10 → v11 migration and adapted-building round-trip\n",
+      "✓ v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 migration and adapted-building round-trip\n",
     );
     process.stdout.write(
       "✓ construction reservation, research, power and staffed food production\n",

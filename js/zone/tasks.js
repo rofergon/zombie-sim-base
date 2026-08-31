@@ -147,10 +147,7 @@
         priority: CFG.PRIORITY.NORMAL,
         capacity: this.adaptations
           ? research
-            ? Math.min(
-                CFG.RESEARCH.DEFAULT_STAFF,
-                this.adaptations.researchCapacity(record),
-              )
+            ? Math.min(CFG.RESEARCH.DEFAULT_STAFF, this.adaptations.researchCapacity(record))
             : this.adaptations.productionCapacity(record)
           : CFG.TASK.PRODUCE_CAPACITY,
         progress: 0,

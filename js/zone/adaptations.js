@@ -188,9 +188,10 @@
 
     researchCapacity(record) {
       if (!record) return 1;
+      const area = Number.isFinite(record.area) ? record.area : 0;
       return Math.max(
         1,
-        Math.min(CFG.RESEARCH.MAX_STAFF, Math.round(record.area / CFG.RESEARCH.AREA_PER_STAFF)),
+        Math.min(CFG.RESEARCH.MAX_STAFF, Math.round(area / CFG.RESEARCH.AREA_PER_STAFF)),
       );
     }
 

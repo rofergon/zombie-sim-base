@@ -81,8 +81,11 @@ The existing pages remain independent regression targets:
   reservations and the same event-driven worker board used by salvage.
 - Shelter, warehouse, cookhouse, workshop, research center, medical bay,
   squad quarters, rooftop farm and generator uses have stable numeric IDs.
-- Library science unlocks agriculture, power, fortifications and improved
-  medicine. Research is persistent and never identified by display text.
+- Library science starts agriculture, power, fortifications and improved
+  medicine projects. Research centers expose size-based staffing slots; every
+  assigned inhabitant contributes linearly to persistent project progress while
+  the center is active, powered and on the day shift. Staff without an active
+  project slowly produces renewable science materials.
 - Headquarters provides one base power unit; generators expand the network.
   Power is allocated deterministically and unpowered production pauses without
   consuming inputs.
@@ -269,11 +272,11 @@ sequence.
     translated display text. Recruitment always uses `ZoneCitizens.recruit`;
     campaign code never creates a parallel population.
 
-## Save v11
+## Save v12
 
 ```text
 {
-  v: 11,
+  v: 12,
   world: {
     seed, configured, source, size,
     mapPackId, mapHash, name, center,
@@ -290,6 +293,7 @@ sequence.
     buildings,
     regions, expedition,
     tech,
+    research: { current, progress, materialProgress },
     defense,
     campaign: {
       act, pending, completed, history, flags,
@@ -301,7 +305,7 @@ sequence.
 }
 ```
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV10` are pure/testable steps. A v3
+`ZoneSave.migrateV3` through `ZoneSave.migrateV11` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
@@ -323,16 +327,17 @@ npm test
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
 assignment, salvage/conservation and dusk. `tests/zone-squads.js` covers seeded
 loot, formation/patrol, encounter combat, pause, inventory return/resume and
-save/load. `tests/zone-colony.js` covers v5 → v11 migration, construction
-conservation, research, power, staffed production, active-defense
+save/load. `tests/zone-colony.js` covers v5 → v12 migration, construction
+conservation, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,
 night recall, horde combat, structural damage and the dawn report. Every browser
 suite uses `file://`. `tests/zone-geo.js` covers deterministic OSM normalization,
 polygon buildings and POIs, elevation, bounded chunk canvases, the first-run
 selector, offline procedural fallback, the 5×5 preset and connected expeditions.
-`tests/zone-campaign.js` covers v9 → v11, the radio choice UI, named recruitment,
+`tests/zone-campaign.js` covers v9 → v12, the radio choice UI, named recruitment,
 reputation, daily trade, laws, all cure stages, the final-night multiplier,
 epilogue and save/load persistence.
-`tests/zone-farming.js` covers the fertilized field → barn → meat cookhouse
-chain, greenhouse winter immunity, finished-ration hunger, staffing and the
-v11 field/building round-trip.
+`tests/zone-research.js` covers researcher assignment, linear staffing speed,
+passive science, start blockers and in-progress save/load. `tests/zone-farming.js`
+covers the fertilized field → barn → meat cookhouse chain, greenhouse winter
+immunity, finished-ration hunger, staffing and the v12 field/building round-trip.

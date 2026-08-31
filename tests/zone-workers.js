@@ -15,15 +15,15 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
           zone: { hqId: 4 },
         },
         v4 = ZS.ZoneSave.migrateV3(v3),
-        v11 = ZS.ZoneSave.migrate(v4);
-      return { v4, v11 };
+        v12 = ZS.ZoneSave.migrate(v4);
+      return { v4, v12 };
     });
     assert.equal(migration.v4.v, 4);
     assert.equal(migration.v4.zone.hqId, 4);
-    assert.equal(migration.v11.v, 11);
-    assert.equal(migration.v11.world.seed, 88);
-    assert.equal(migration.v11.clock.minute, 611);
-    assert.equal(migration.v11.world.source, "procedural");
+    assert.equal(migration.v12.v, 12);
+    assert.equal(migration.v12.world.seed, 88);
+    assert.equal(migration.v12.clock.minute, 611);
+    assert.equal(migration.v12.world.source, "procedural");
 
     await sim.page.locator("#zone-hq-action").click();
     const start = await sim.page.evaluate(() => ({
@@ -258,7 +258,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(restored.jobs, beforeSave.jobs);
     assert.equal(restored.seed, beforeSave.seed);
     assertNoErrors(sim.errors, "zone workers");
-    process.stdout.write("✓ v3 → v4 → v11 and v11 worker round-trip\n");
+    process.stdout.write("✓ v3 → v4 → v12 and v12 worker round-trip\n");
     process.stdout.write("✓ population, hunger, salvage and conservation\n");
     process.stdout.write("✓ priority rebalance, replacement and dusk return\n");
   } finally {

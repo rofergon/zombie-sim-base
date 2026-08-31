@@ -34,12 +34,21 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         scenario.tasks.reconcile();
       }
 
+      function completeResearch(record, tech) {
+        if (!scenario.adaptations.research(tech)) return false;
+        const job = scenario.tasks.forBuilding(record.id),
+          worker = scenario.citizens.at(job.assigned[0]);
+        scenario.state.zone.research.progress = CFG.RESEARCH.WORK[tech];
+        scenario.tasks._work(worker, job, 0.01);
+        return scenario.state.zone.tech[tech];
+      }
+
       complete(targets[0], U.RESEARCH);
       const researched = [
-        scenario.adaptations.research(T.AGRICULTURE),
-        scenario.adaptations.research(T.FERTILIZATION),
-        scenario.adaptations.research(T.GREENHOUSES),
-        scenario.adaptations.research(T.EFFICIENT_COOKING),
+        completeResearch(targets[0], T.AGRICULTURE),
+        completeResearch(targets[0], T.FERTILIZATION),
+        completeResearch(targets[0], T.GREENHOUSES),
+        completeResearch(targets[0], T.EFFICIENT_COOKING),
       ];
       complete(targets[1], U.BARN);
       complete(targets[2], U.COOKHOUSE);
@@ -185,7 +194,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         greenhouseFertilized: scenario.map.at(buildingIds[2]).fertilized,
       };
     }, farming);
-    assert.equal(restored.version, 11);
+    assert.equal(restored.version, 12);
     assert.equal(restored.resources, 10);
     assert.equal(restored.field.kind, 1);
     assert.equal(restored.field.fertilized, true);

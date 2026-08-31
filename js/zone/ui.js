@@ -175,8 +175,20 @@
         '<p id="zone-selection-detail" class="zone-detail"></p><div id="zone-member-detail" class="zone-member-detail" hidden></div>' +
         '<button id="zone-hq-action" type="button" hidden>Establecer base aquí</button>' +
         '<div id="zone-job-actions" hidden>' +
-        '<button id="zone-salvage" type="button">Crear tarea de desguace</button>' +
+        '<div class="zone-building-action-strip" aria-label="acciones del edificio">' +
+        '<button id="zone-salvage" type="button" aria-label="Desguazar edificio" aria-describedby="zone-salvage-preview"><span class="zone-icon zi-build" aria-hidden="true"></span><small>desguazar</small></button>' +
         '<button id="zone-cancel-job" type="button" hidden>Cancelar desguace</button>' +
+        "</div>" +
+        '<section id="zone-salvage-preview" class="zone-salvage-preview" role="tooltip">' +
+        '<header><strong>DESGUAZAR EDIFICIO</strong><b><span id="zone-salvage-total">0</span> materiales</b></header>' +
+        "<p>Recursos obtenidos de la deconstrucción:</p>" +
+        '<div class="zone-salvage-yield">' +
+        '<span><span class="zone-icon zi-wood" aria-hidden="true"></span><b id="zone-salvage-wood">0</b><small>madera</small></span>' +
+        '<span><span class="zone-icon zi-metal" aria-hidden="true"></span><b id="zone-salvage-metal">0</b><small>metal</small></span>' +
+        '<span><span class="zone-icon zi-brick" aria-hidden="true"></span><b id="zone-salvage-brick">0</b><small>ladrillo</small></span>' +
+        "</div>" +
+        "<footer>Haz clic para asignar hasta 3 trabajadores.</footer>" +
+        "</section>" +
         '<label>prioridad <select id="zone-priority"><option value="0">desactivada</option><option value="1">baja</option><option value="2">normal</option><option value="3">alta</option></select></label>' +
         "</div>" +
         '<div id="zone-squad-actions" hidden>' +
@@ -265,6 +277,10 @@
       this.hqAction = q("#zone-hq-action");
       this.jobActions = q("#zone-job-actions");
       this.salvage = q("#zone-salvage");
+      this.salvageTotal = q("#zone-salvage-total");
+      this.salvageWood = q("#zone-salvage-wood");
+      this.salvageMetal = q("#zone-salvage-metal");
+      this.salvageBrick = q("#zone-salvage-brick");
       this.cancelJob = q("#zone-cancel-job");
       this.priority = q("#zone-priority");
       this.squadActions = q("#zone-squad-actions");
@@ -422,6 +438,7 @@
           alert = event.target.closest("[data-alert-index]"),
           citizen = event.target.closest("[data-focus-citizen]"),
           research = event.target.closest("[data-system-tech]"),
+          researchStaff = event.target.closest("[data-research-staff]"),
           adapt = event.target.closest("[data-system-adapt-submit]"),
           defenseBuild = event.target.closest("[data-defense-build]"),
           defenseRemove = event.target.closest("[data-defense-remove]"),
@@ -447,6 +464,11 @@
           this.callbacks.focusCitizen(Number(citizen.dataset.focusCitizen));
         else if (research && this.callbacks)
           this.callbacks.research(Number(research.dataset.systemTech));
+        else if (researchStaff && this.callbacks)
+          this.callbacks.researchStaff(
+            Number(researchStaff.dataset.researchCenter),
+            Number(researchStaff.dataset.researchStaff),
+          );
         else if (adapt && this.callbacks) {
           const select = this.root.querySelector("[data-system-adapt]");
           if (select) this.callbacks.adapt(Number(select.value));
@@ -679,7 +701,25 @@
             citizen.arrivalDay,
           ]),
         ];
-      else if (name === "research") signatureData = [name, model.stock[R.SCIENCE], model.tech];
+      else if (name === "research")
+        signatureData = [
+          name,
+          model.stock[R.SCIENCE],
+          model.tech,
+          model.research.current,
+          Math.round(model.research.progress * 10),
+          Math.round(model.research.materialProgress * 10),
+          model.research.centers.map((center) => [
+            center.id,
+            center.active,
+            center.powered,
+            Math.ceil(center.hp),
+            center.assigned,
+            center.working,
+            center.capacity,
+            center.max,
+          ]),
+        ];
       else if (name === "agriculture")
         signatureData = [
           name,
@@ -842,26 +882,112 @@
     }
 
     _renderResearchSystem(model) {
-      const science = model.stock[R.SCIENCE];
+      const science = model.stock[R.SCIENCE],
+        research = model.research,
+        current = research.current,
+        progress = current && research.work ? (research.progress / research.work) * 100 : 0,
+        materialProgress = (research.materialProgress / CFG.RESEARCH.SCIENCE_SECONDS) * 100;
       let html =
         '<div class="zone-system-callout"><span class="zone-icon zi-science"></span><b>' +
         science +
-        ' ciencia disponible</b></div><p class="zone-system-lead">Requiere un centro de investigación operativo.</p><div class="zone-tech-list">';
+        " ciencia disponible</b><span>" +
+        research.assigned +
+        " habitantes asignados</span></div>";
+      if (current) {
+        const remaining = Math.max(0, research.work - research.progress),
+          eta = research.working
+            ? this._researchTime(remaining / research.working)
+            : "detenida hasta que haya personal trabajando";
+        html +=
+          '<article class="zone-research-current"><header><span class="zone-icon zi-research"></span><span><b>' +
+          TECH_LABEL[current] +
+          "</b><small>" +
+          research.working +
+          " investigadores activos · " +
+          eta +
+          "</small></span><strong>" +
+          Math.min(100, progress).toFixed(0) +
+          '%</strong></header><i><em style="width:' +
+          Math.min(100, progress).toFixed(1) +
+          '%"></em></i></article>';
+      } else
+        html +=
+          '<article class="zone-research-current idle"><header><span class="zone-icon zi-science"></span><span><b>Producción de ciencia</b><small>Sin proyecto activo, cada investigador prepara materiales científicos.</small></span><strong>' +
+          Math.min(100, materialProgress).toFixed(0) +
+          '%</strong></header><i><em style="width:' +
+          Math.min(100, materialProgress).toFixed(1) +
+          '%"></em></i></article>';
+      html +=
+        '<p class="zone-system-lead">El trabajo solo avanza de día, dentro de centros activos y con energía. Cada investigador aporta la misma velocidad: más habitantes reducen el tiempo de forma lineal.</p>' +
+        '<h3 class="zone-system-subtitle">PERSONAL DE LABORATORIO</h3><div class="zone-research-centers">';
+      for (let i = 0; i < research.centers.length; i++) {
+        const center = research.centers[i];
+        let status = current ? "investigando" : "preparando ciencia";
+        if (center.hp <= 0) status = "destruido";
+        else if (!center.active) status = "pausado";
+        else if (!center.powered) status = "sin energía";
+        else if (!center.capacity) status = "sin personal";
+        else if (!center.working) status = "personal en camino o fuera de turno";
+        html +=
+          '<article class="zone-research-center"><span class="zone-icon zi-research"></span><span><b>Centro ' +
+          (center.id + 1) +
+          "</b><small>" +
+          status +
+          " · " +
+          center.working +
+          "/" +
+          center.assigned +
+          ' trabajando</small></span><div><button type="button" data-research-center="' +
+          center.id +
+          '" data-research-staff="-1" ' +
+          (center.capacity <= 0 ? "disabled" : "") +
+          ">−</button><b>" +
+          center.capacity +
+          "/" +
+          center.max +
+          '</b><button type="button" data-research-center="' +
+          center.id +
+          '" data-research-staff="1" ' +
+          (center.capacity >= center.max ? "disabled" : "") +
+          ">+</button></div></article>";
+      }
+      if (!research.centers.length)
+        html += '<p class="zone-system-empty">Adapta un edificio despejado como centro.</p>';
+      html += '</div><h3 class="zone-system-subtitle">PROYECTOS</h3><div class="zone-tech-list">';
       for (let tech = CFG.TECH.AGRICULTURE; tech < CFG.TECH.COUNT; tech++) {
         const unlocked = Boolean(model.tech[tech]),
-          cost = CFG.RESEARCH.COSTS[tech];
+          active = current === tech,
+          cost = CFG.RESEARCH.COSTS[tech],
+          reason = unlocked ? "" : research.controller.researchBlockReason(tech),
+          duration = this._researchTime(CFG.RESEARCH.WORK[tech]);
         html +=
-          '<button type="button" data-system-tech="' +
+          '<button type="button" class="' +
+          (active ? "active" : "") +
+          '" data-system-tech="' +
           tech +
+          '" title="' +
+          (reason || "Iniciar investigación") +
           '" ' +
-          (unlocked ? "disabled" : "") +
+          (unlocked || current || reason ? "disabled" : "") +
           '><span class="zone-icon zi-research"></span><span><b>' +
           TECH_LABEL[tech] +
           "</b><small>" +
-          (unlocked ? "investigado" : cost + " ciencia") +
+          (unlocked
+            ? "investigado"
+            : active
+              ? Math.min(100, progress).toFixed(0) + "% · en curso"
+              : cost + " ciencia · " + duration + " con 1 investigador") +
           "</small></span></button>";
       }
       this.systemBody.innerHTML = html + "</div>";
+    }
+
+    _researchTime(workerSeconds) {
+      const minutes = Math.max(0, Math.ceil(workerSeconds * CFG.CLOCK.MINUTES_PER_SECOND)),
+        hours = (minutes / 60) | 0,
+        remainder = minutes % 60;
+      if (!hours) return remainder + " min de turno";
+      return hours + " h" + (remainder ? " " + remainder + " min" : "") + " de turno";
     }
 
     _agricultureJob(jobs, targetKind, id) {
@@ -1500,6 +1626,10 @@
       if (abandoned) this._renderBuildingVisual(record, map);
       this.jobActions.hidden = !abandoned || !reachable;
       this.salvage.hidden = Boolean(job) || map.materialsTotal(record) <= 0;
+      this.salvageTotal.textContent = String(map.materialsTotal(record));
+      this.salvageWood.textContent = String(record.salvage[R.WOOD]);
+      this.salvageMetal.textContent = String(record.salvage[R.METAL]);
+      this.salvageBrick.textContent = String(record.salvage[R.BRICK]);
       this.cancelJob.hidden = !job;
       this.priority.disabled = !job;
       this.priority.value = String(job ? job.priority : CFG.PRIORITY.NORMAL);
@@ -1548,13 +1678,17 @@
       this.researchActions.hidden = record.use !== CFG.BUILDING_USE.RESEARCH;
       for (const option of this.adaptUse.options)
         option.disabled = !adaptations.isUnlocked(Number(option.value));
-      for (const button of this.researchActions.querySelectorAll("[data-tech]"))
-        button.disabled = Boolean(adaptations.state.zone.tech[Number(button.dataset.tech)]);
+      for (const button of this.researchActions.querySelectorAll("[data-tech]")) {
+        const reason = adaptations.researchBlockReason(Number(button.dataset.tech));
+        button.disabled = Boolean(reason);
+        button.title = reason || "Iniciar investigación";
+      }
     }
 
     _jobLabel(job) {
       if (job.type === CFG.JOB.BUILD) return "construcción";
       if (job.type === CFG.JOB.PRODUCE) return "producción";
+      if (job.type === CFG.JOB.RESEARCH) return "investigación";
       return "desguace";
     }
 
@@ -1684,6 +1818,11 @@
         const record = adaptations.map.at(job.targetId),
           seconds = adaptations.productionSeconds(record);
         return Math.min(100, Math.round((job.progress / seconds) * 100));
+      }
+      if (job.type === CFG.JOB.RESEARCH) {
+        const research = adaptations.state.zone.research,
+          work = research.current ? CFG.RESEARCH.WORK[research.current] : 0;
+        return work ? Math.min(100, Math.round((research.progress / work) * 100)) : 0;
       }
       return Math.min(100, Math.round((job.progress / CFG.TASK.SALVAGE_SECONDS) * 100));
     }

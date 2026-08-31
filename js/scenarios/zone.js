@@ -7,6 +7,15 @@
   const CI = { x: 0, y: 0, zoom: 0.72, ease: 0.55 };
   const ROUTE_DASH = [1, 7];
   const SOLID_LINE = [];
+  const TECH_NAME = Object.freeze({
+    [CFG.TECH.AGRICULTURE]: "Agricultura",
+    [CFG.TECH.POWER]: "Energía",
+    [CFG.TECH.FORTIFICATIONS]: "Fortificaciones",
+    [CFG.TECH.MEDICINE]: "Medicina mejorada",
+    [CFG.TECH.FERTILIZATION]: "Técnicas de fertilización",
+    [CFG.TECH.GREENHOUSES]: "Invernaderos",
+    [CFG.TECH.EFFICIENT_COOKING]: "Cocina eficiente",
+  });
 
   class ScenarioZone {
     constructor() {
@@ -100,6 +109,7 @@
         toggleBuilding: () => this.toggleSelectedBuilding(),
         repairBuilding: () => this.repairSelectedBuilding(),
         research: (tech) => this.research(tech),
+        researchStaff: (id, delta) => this.setResearchStaff(id, delta),
         selectSquad: (id, additive) => this.selectSquad(id, additive),
         focusSquad: (id) => this.focusSquad(id),
         toggleRoster: () => this.toggleSquadRoster(),
@@ -213,7 +223,15 @@
       this.scavenge.connect(this.citizens, this.squads, this, this.agents, () => this._markUI());
       this.tasks.connectAdaptations(this.adaptations);
       this.tasks.connectAgriculture(this.agriculture);
-      this.adaptations.connect(this.citizens, this.tasks, () => this._markUI());
+      this.adaptations.connect(
+        this.citizens,
+        this.tasks,
+        () => this._markUI(),
+        (tech) => {
+          this.ui.toast((TECH_NAME[tech] || "La tecnología") + " ha sido investigada.");
+          this._markUI();
+        },
+      );
       this.agriculture.connect(this.tasks, this.citizens, this.fortifications, () =>
         this._markUI(),
       );
@@ -729,9 +747,21 @@
       const result = this.adaptations.research(tech);
       this.ui.toast(
         result
-          ? "Investigación completada."
-          : "Se necesita un centro de investigación o materiales de ciencia.",
+          ? "Investigación iniciada. Cada habitante asignado aumentará la velocidad."
+          : this.adaptations.researchBlockReason(tech),
       );
+      this._markUI();
+      return result;
+    }
+
+    setResearchStaff(buildingId, delta) {
+      const result = this.adaptations.setResearchStaff(buildingId, delta);
+      if (!result)
+        this.ui.toast(
+          delta > 0
+            ? "El centro ya alcanzó su capacidad o no está disponible."
+            : "El centro ya está sin personal.",
+        );
       this._markUI();
       return result;
     }
@@ -1852,6 +1882,7 @@
         jobs: this.tasks.jobs,
         useCounts,
         tech: this.state.zone.tech,
+        research: this.adaptations.researchModel(),
         fortificationCounts: this.fortifications.counts(),
         defense: this.defense.status(),
         regions: this.regions.model(this.squads.list.length),

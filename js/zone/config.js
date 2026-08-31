@@ -113,7 +113,7 @@
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 12,
+    SAVE_VERSION: 13,
     RESOURCE,
     JOB,
     ROLE,
@@ -211,6 +211,15 @@
       BUILD_SECONDS: 18,
       PRODUCE_CAPACITY: 1,
       RECONCILE_SECONDS: 1.5,
+    }),
+    GATHER: Object.freeze({
+      DEFAULT_WORKERS: 2,
+      MAX_WORKERS: 8,
+      WORK_SECONDS: 1.6,
+      WOOD_PER_TREE: 4,
+      METAL_PER_TRIP: 4,
+      MAX_NODES_PER_AREA: 96,
+      CLICK_RADIUS: 145,
     }),
     SQUAD: Object.freeze({
       MAX_MEMBERS: 4,
