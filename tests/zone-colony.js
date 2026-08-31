@@ -440,7 +440,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     assertNoErrors(sim.errors, "zone colony");
     process.stdout.write(
-      "✓ v5 → v6 → v7 → v8 → v9 → v10 migration and adapted-building round-trip\n",
+      "✓ v5 → v6 → v7 → v8 → v9 → v10 → v11 migration and adapted-building round-trip\n",
     );
     process.stdout.write(
       "✓ construction reservation, research, power and staffed food production\n",
