@@ -165,6 +165,21 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         portraitAsset: getComputedStyle(scenario.ui.memberDetail.querySelector(".zone-portrait"))
           .backgroundImage,
       };
+      const portraitAssets = [1, 17, 33, 49].map((cid) => {
+          const portrait = document.createElement("span");
+          scenario.ui._setPortrait(portrait, { cid, name: "prueba " + cid });
+          scenario.ui.root.appendChild(portrait);
+          const asset = getComputedStyle(portrait).backgroundImage;
+          portrait.remove();
+          return asset;
+        }),
+        P = ZS.ZoneConfig.POI,
+        sceneVariants = [
+          scenario.ui._buildingScene({ area: 8000, poi: P.RESIDENCE }),
+          scenario.ui._buildingScene({ area: 15000, poi: P.GROCERY }),
+          scenario.ui._buildingScene({ area: 30000, poi: P.WAREHOUSE }),
+          scenario.ui._buildingScene({ area: 50000, poi: P.LIBRARY }),
+        ];
       const building = scenario.map.records.find((record) => record !== scenario.map.hq);
       building.revealed = false;
       scenario.debugSelectBuilding(building.id);
@@ -176,7 +191,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         title: scenario.ui.title.textContent,
         unknown: Boolean(scenario.ui.selectionVisual.querySelector(".zone-resource-unknown")),
         resourceSlots: scenario.ui.selectionVisual.querySelectorAll(".zone-resource-slot").length,
-        previewAsset: scenario.ui.selectionVisual.querySelector("img").src,
+        previewAsset: scenario.ui.selectionVisual.querySelector("img").getAttribute("src"),
         poiHidden: !scenario.ui.meta.textContent.includes(building.poiLabel),
       };
       building.revealed = true;
@@ -212,6 +227,8 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         discoveredView,
         emptyView,
         rosterView,
+        portraitAssets,
+        sceneVariants,
         dottedSegments,
       };
     }, move);
@@ -225,6 +242,16 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       portraitAsset: contextualUI.squadView.portraitAsset,
     });
     assert.match(contextualUI.squadView.portraitAsset, /survivors-atlas\.png/);
+    assert.match(contextualUI.portraitAssets[0], /survivors-atlas\.png/);
+    assert.match(contextualUI.portraitAssets[1], /survivors-atlas-02\.png/);
+    assert.match(contextualUI.portraitAssets[2], /survivors-atlas-03\.png/);
+    assert.match(contextualUI.portraitAssets[3], /survivors-atlas\.png/);
+    assert.deepEqual(contextualUI.sceneVariants, [
+      "assets/zone/scenes/abandoned-residential.png",
+      "assets/zone/scenes/abandoned-building.png",
+      "assets/zone/scenes/abandoned-industrial.png",
+      "assets/zone/scenes/abandoned-civic.png",
+    ]);
     assert.equal(contextualUI.buildingView.inspector, false);
     assert.equal(contextualUI.buildingView.roster, true);
     assert.equal(contextualUI.buildingView.card, false);
@@ -233,7 +260,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(contextualUI.buildingView.unknown, true);
     assert.equal(contextualUI.buildingView.resourceSlots, 0);
     assert.equal(contextualUI.buildingView.poiHidden, true);
-    assert.match(contextualUI.buildingView.previewAsset, /abandoned-building\.png$/);
+    assert.ok(contextualUI.sceneVariants.includes(contextualUI.buildingView.previewAsset));
     assert.equal(contextualUI.discoveredView.unknown, false);
     assert.ok(contextualUI.discoveredView.resourceSlots > 0);
     assert.equal(contextualUI.discoveredView.poiVisible, true);

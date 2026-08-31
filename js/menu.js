@@ -204,7 +204,14 @@
     raf = requestAnimationFrame(artLoop);
   }
 
-  function setOpen(open) {
+  function setPlayUrl(playing) {
+    const url = new URL(location.href);
+    if (playing) url.searchParams.set("play", "1");
+    else url.searchParams.delete("play");
+    history.replaceState(null, "", url.href);
+  }
+
+  function setOpen(open, showMenuButton) {
     const scenario = ZS.scenario;
     if (open) {
       pausedBeforeMenu = Boolean(scenario && scenario.paused);
@@ -221,7 +228,7 @@
     } else {
       root.hidden = true;
       root.setAttribute("aria-hidden", "true");
-      menuButton.hidden = false;
+      menuButton.hidden = showMenuButton === false;
       document.body.classList.remove("zs-menu-open");
       cancelAnimationFrame(raf);
       if (scenario) scenario.paused = pausedBeforeMenu;
@@ -230,9 +237,13 @@
 
   playButton.addEventListener("click", () => {
     if (ZS.sound && !setting("muted", false)) ZS.sound.unlock();
+    setPlayUrl(true);
     setOpen(false);
   });
-  menuButton.addEventListener("click", () => setOpen(true));
+  menuButton.addEventListener("click", () => {
+    setPlayUrl(false);
+    setOpen(true);
+  });
 
   soundButton.addEventListener("click", () => {
     ZS.settings.set("muted", !setting("muted", false));
@@ -280,6 +291,7 @@
   window.addEventListener("resize", resizeArt);
   document.addEventListener("fullscreenchange", syncControls);
 
-  if (params.get("play") === "1" || params.get("record") === "1") setOpen(false);
+  if (params.get("record") === "1") setOpen(false, false);
+  else if (params.get("play") === "1") setOpen(false);
   else setOpen(true);
 })();

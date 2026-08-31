@@ -62,16 +62,23 @@ const { assertNoErrors, launch, openSim } = require("./browser");
       menuHidden: document.querySelector("#main-menu").hidden,
       buttonHidden: document.querySelector("#zs-menu-button").hidden,
       paused: ZS.scenario.paused,
+      play: new URLSearchParams(location.search).get("play"),
     }));
     assert.equal(playing.menuHidden, true, "start closes the menu");
     assert.equal(playing.buttonHidden, false, "menu tab appears during play");
     assert.equal(playing.paused, false, "start resumes the outbreak");
+    assert.equal(playing.play, "1", "playing has its own URL state");
 
     await sim.page.locator("#zs-menu-button").click();
     assert.equal(
       await sim.page.locator("#main-menu").getAttribute("aria-hidden"),
       "false",
       "menu tab reopens the menu",
+    );
+    assert.equal(
+      await sim.page.evaluate(() => new URLSearchParams(location.search).has("play")),
+      false,
+      "returning to the menu restores the root URL state",
     );
     assertNoErrors(sim.errors, "index.html menu");
     console.log("menu: ok");
