@@ -372,14 +372,28 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
           (agent) => agent.zoneEnemy && agent.encounterBuildingId === id,
         ).length;
       scenario.scavenge._materialize(record, scenario.squads.list[0].id);
+      const materialized = ZS.Sim.agents.filter(
+        (agent) => agent.zoneEnemy && agent.encounterBuildingId === id,
+      ).length;
+      scenario.scavenge._materialize(record, scenario.squads.list[0].id);
       const after = ZS.Sim.agents.filter(
         (agent) => agent.zoneEnemy && agent.encounterBuildingId === id,
       ).length;
-      return { revealed: record.revealed, remaining: record.infectedRemaining, before, after };
+      const squad = scenario.squads.at(scenario.squads.list[0].id),
+        room = record.shape.rooms[0];
+      for (let i = 0; i < squad.members.length; i++) {
+        const member = scenario.citizens.at(squad.members[i]);
+        member.x = room[0] + room[2] * 0.5 + (i - 1.5) * 4;
+        member.y = room[1] + room[3] * 0.5;
+        member.vx = member.vy = 0;
+        member.bld = record.id;
+      }
+      return { revealed: record.revealed, remaining: record.infectedRemaining, before, materialized, after };
     }, encounter);
     assert.equal(revealed.revealed, true);
-    assert.equal(revealed.before, revealed.remaining);
-    assert.equal(revealed.after, revealed.before, "encounter must materialize once");
+    assert.ok(revealed.before === 0 || revealed.before === revealed.remaining);
+    assert.equal(revealed.materialized, revealed.remaining);
+    assert.equal(revealed.after, revealed.materialized, "encounter must materialize once");
 
     const paused = await sim.page.evaluate(() => {
       const enemy = ZS.Sim.agents.find((agent) => agent.zoneEnemy),
@@ -436,8 +450,17 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     const fullTrip = await sim.page.evaluate(() => {
       const scenario = ZS.scenario,
         squad = scenario.squads.list[0],
-        P = ZS.ZoneConfig.POI;
+        P = ZS.ZoneConfig.POI,
+        reset = scenario.map.entryPoint(scenario.map.hq);
       scenario.squads.clearOrders(squad);
+      for (let i = 0; i < squad.members.length; i++) {
+        const member = scenario.citizens.at(squad.members[i]);
+        member.x = reset.x + (i - 1.5) * 3;
+        member.y = reset.y;
+        member.vx = member.vy = 0;
+        member.bld = scenario.map.hq.id;
+        member.path = null;
+      }
       let target = null,
         next = null,
         bestLoot = -1;
@@ -576,12 +599,107 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       record.lootWeapons[ZS.ZoneConfig.WEAPON.PISTOL] = 1;
       for (let i = 0; i < squad.equipment.length; i++)
         squad.equipment[i] = ZS.ZoneConfig.WEAPON.RIFLE;
+      const previousCapacity = squad.capacity;
+      squad.capacity = scenario.squads.inventoryTotal(squad);
       const before = record.lootWeapons[ZS.ZoneConfig.WEAPON.PISTOL],
         moved = scenario.scavenge._takeOne(record, squad),
         after = record.lootWeapons[ZS.ZoneConfig.WEAPON.PISTOL];
+      squad.capacity = previousCapacity;
       return { before, moved, after };
     });
     assert.deepEqual(unusable, { before: 1, moved: false, after: 1 });
+
+    const recovery = await sim.page.evaluate(() => {
+      const scenario = ZS.scenario,
+        CFG = ZS.ZoneConfig,
+        R = CFG.RESOURCE,
+        W = CFG.WEAPON,
+        casualty = scenario.squads.list[1],
+        x = scenario.map.hq.cx + 80,
+        y = scenario.map.hq.cy + 30;
+      casualty.equipment[0] = W.SHOTGUN;
+      casualty.equipment[1] = W.SNIPER;
+      casualty.inventory[R.AMMO] = 7;
+      casualty.inventory[R.MEDICINE] = 1;
+      for (let i = 0; i < casualty.members.length; i++) {
+        const member = scenario.citizens.at(casualty.members[i]);
+        member.x = x;
+        member.y = y;
+        scenario.weapons.applyAgentWeapon(member, casualty.equipment[i]);
+      }
+      const stockAmmo = scenario.state.stock[R.AMMO],
+        ids = casualty.members.slice();
+      for (let i = 0; i < ids.length; i++) scenario.citizens.kill(scenario.citizens.at(ids[i]));
+      const drop = scenario.weapons.list[0],
+        contents = scenario.weapons.contents(drop),
+        canvas = document.createElement("canvas"),
+        context = canvas.getContext("2d"),
+        originalLine = ZS.wline;
+      let drawn = 0;
+      ZS.wline = function (...args) {
+        drawn++;
+        return originalLine.apply(this, args);
+      };
+      scenario.weapons.drawGround(context);
+      ZS.wline = originalLine;
+      scenario._capture();
+      const normalized = ZS.ZoneSave.normalize(JSON.parse(JSON.stringify(scenario.state.data))),
+        persisted = normalized.zone.weaponDrops[0],
+        squad = scenario.squads.list[0],
+        leader = scenario.citizens.at(squad.members[0]);
+      for (let i = 0; i < R.COUNT; i++) squad.inventory[i] = 0;
+      for (let i = W.PISTOL; i < W.COUNT; i++) squad.spareWeapons[i] = 0;
+      scenario.squads.issuePickup(squad, drop, false);
+      const orderKind = squad.orders[0].kind;
+      leader.x = drop.x;
+      leader.y = drop.y;
+      scenario.squads._updateLeader(leader, squad, 0.05, performance.now() / 1000, scenario.nav);
+      for (let i = 0; i < squad.members.length; i++)
+        scenario.citizens.at(squad.members[i]).bld = scenario.map.hq.id;
+      scenario.weapons.armory[W.SHOTGUN]++;
+      const memberId = squad.members[0],
+        equipped = scenario.weapons.equipFromArmory(squad, memberId, W.SHOTGUN);
+      scenario.debugSelectSquad(squad.id);
+      const select = scenario.ui.memberDetail.querySelector(
+          '[data-equip-weapon="' + memberId + '"]',
+        ),
+        icon = scenario.ui.memberDetail.querySelector(".zone-weapon-icon");
+      return {
+        squadRemoved: !scenario.squads.at(casualty.id),
+        stockConserved: scenario.state.stock[R.AMMO] === stockAmmo,
+        contents,
+        drawn,
+        persisted: {
+          version: normalized.v,
+          shotgun: persisted.weapons[W.SHOTGUN],
+          sniper: persisted.weapons[W.SNIPER],
+          ammo: persisted.resources[R.AMMO],
+          medicine: persisted.resources[R.MEDICINE],
+        },
+        orderKind,
+        pickupKind: CFG.ORDER.PICKUP,
+        dropRemoved: scenario.weapons.list.length === 0,
+        equipped,
+        selectedWeapon: Number(select.value),
+        iconAsset: getComputedStyle(icon).backgroundImage,
+      };
+    });
+    assert.equal(recovery.squadRemoved, true);
+    assert.equal(recovery.stockConserved, true);
+    assert.deepEqual(recovery.contents, { weapons: 2, resources: 8 });
+    assert.ok(recovery.drawn > 0, "ground weapon cache should use sketch lines");
+    assert.deepEqual(recovery.persisted, {
+      version: 16,
+      shotgun: 1,
+      sniper: 1,
+      ammo: 7,
+      medicine: 1,
+    });
+    assert.equal(recovery.orderKind, recovery.pickupKind);
+    assert.equal(recovery.dropRemoved, true);
+    assert.equal(recovery.equipped, true);
+    assert.equal(recovery.selectedWeapon, 4);
+    assert.match(recovery.iconAsset, /weapon-atlas\.png/);
 
     const maxStep = await sim.page.evaluate(() => {
       const scenario = ZS.scenario,
@@ -617,6 +735,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     process.stdout.write("✓ deterministic POI/loot, squad creation and one-path formation\n");
     process.stdout.write("✓ queued movement, looping patrol and persistent orders\n");
     process.stdout.write("✓ abstract encounters, combat, ammo fallback and pause\n");
+    process.stdout.write("✓ weapon slots, death drops, ground rendering and contextual recovery\n");
     process.stdout.write(
       "✓ full-inventory return, persistent queued resume and no duplicate loot\n",
     );

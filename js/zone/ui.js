@@ -125,6 +125,13 @@
     retreating: "retirada de emergencia",
     "resuming scavenge": "reanudando saqueo",
     "loot left for another loadout": "botín restante",
+    "recovering vehicle": "recuperando vehículo",
+    "boarding vehicle": "subiendo al vehículo",
+    motorized: "motorizada",
+    expedition: "en expedición",
+    "motorized expedition": "en expedición motorizada",
+    "expedition returned": "de vuelta de expedición",
+    "waiting for storage": "esperando espacio de almacén",
   });
 
   class ZoneUI {
@@ -1818,7 +1825,8 @@
           squads.inventoryTotal(squad) +
           "/" +
           squad.capacity +
-          " · respuesta automática · a pie";
+          " · respuesta automática · " +
+          (squad.vehicleId === null ? "a pie" : "vehículo " + squad.vehicleId);
         select.append(title, detail, members, supplies);
         focus.type = "button";
         focus.className = "zone-squad-focus";
@@ -1828,6 +1836,8 @@
           squad.id +
           (groups.length ? " (grupo " + groups.join(", ") + ")" : "");
         focus.textContent = "⌖";
+        select.disabled = Boolean(squad.away);
+        focus.disabled = Boolean(squad.away);
         row.append(select, focus);
         this.squadList.appendChild(row);
       }

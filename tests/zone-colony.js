@@ -15,7 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         zone: { hqId: 2, initialized: false, buildings: [] },
       }),
     );
-    assert.equal(migrated.v, 14);
+    assert.equal(migrated.v, 16);
     assert.equal(migrated.world.seed, 77);
     assert.equal(migrated.zone.tech.length, 8);
     assert.equal(migrated.zone.defense.active, false);
@@ -28,6 +28,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         R = CFG.RESOURCE,
         U = CFG.BUILDING_USE,
         T = CFG.TECH;
+      scenario.map.hq.capacity = 1000;
       for (let i = 0; i < R.COUNT; i++) scenario.state.stock[i] = 200;
       const targets = scenario.map.records
         .filter((record) => record !== scenario.map.hq)
@@ -73,6 +74,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         fortificationsTech = completeResearch(targets[0], T.FORTIFICATIONS);
       complete(targets[1], U.POWER);
       complete(targets[2], U.FARM);
+      const scienceAfterResearch = scenario.state.stock[R.SCIENCE];
+      for (let i = 0; i < R.COUNT; i++) scenario.state.stock[i] = 0;
+      scenario.state.stock[R.SCIENCE] = 100;
       scenario.adaptations.recalculatePower();
       scenario.tasks.reconcile();
       const production = scenario.tasks.forBuilding(targets[2].id),
@@ -96,7 +100,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         greenhousesTech,
         powerTech,
         fortificationsTech,
-        scienceSpent: science0 - scenario.state.stock[R.SCIENCE],
+        scienceSpent: science0 - scienceAfterResearch,
         ids: targets.slice(0, 3).map((record) => record.id),
       };
     });
@@ -449,7 +453,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
 
     assertNoErrors(sim.errors, "zone colony");
     process.stdout.write(
-      "✓ v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 migration and adapted-building round-trip\n",
+      "✓ v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 → v15 → v16 migration and adapted-building round-trip\n",
     );
     process.stdout.write(
       "✓ construction reservation, research, power and staffed food production\n",

@@ -720,8 +720,8 @@
         worker.wantMove = false;
         worker.vx *= Math.max(0, 1 - dt * 6);
         worker.vy *= Math.max(0, 1 - dt * 6);
-        if (this.adaptations) this.adaptations.workResearch(record, workDt);
-        if (this.citizens) this.citizens.addSkill(worker, CFG.SKILL.LABOR, workDt * 0.05);
+        if (this.adaptations) this.adaptations.workResearch(record, dt);
+        if (this.citizens) this.citizens.addSkill(worker, CFG.SKILL.LABOR, dt * 0.05);
         return;
       }
       if (job.type === CFG.JOB.PRODUCE) {
@@ -775,7 +775,7 @@
     }
 
     _workSound(worker, job, dt) {
-      if (!ZS.sound) return;
+      if (!worker || !ZS.sound) return;
       worker.workSoundT = (worker.workSoundT || 0) - dt;
       if (worker.workSoundT > 0) return;
       worker.workSoundT = 0.62 + ZS.hash(worker.cid * 193 + job.id * 71) * 0.78;

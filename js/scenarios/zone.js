@@ -1164,6 +1164,11 @@
       const citizen = this.citizens.at(id),
         cam = ZS.debug && ZS.debug.cam;
       if (!citizen || citizen.dead || !cam) return false;
+      if (citizen.away) {
+        this.systemPanel = "expedition";
+        this.ui.setSystemPanel(this.systemPanel, this._systemModel());
+        return true;
+      }
       this.squadRosterOpen = false;
       this._clearSelection();
       if (citizen.squadId !== null) this._addSquadSelected(this.squads.at(citizen.squadId));
@@ -1834,7 +1839,7 @@
     }
 
     _addSquadSelected(squad) {
-      if (!squad) return;
+      if (!squad || squad.away) return;
       for (let i = 0; i < squad.members.length; i++)
         this._addSelected(this.citizens.at(squad.members[i]));
     }
@@ -2095,6 +2100,7 @@
         housing = this.adaptations.housingCapacity(),
         storage = this.adaptations.storageCapacity();
       let hungriest = null,
+        mostExposed = null,
         stored = 0,
         unpowered = null,
         stalled = null;
@@ -2103,6 +2109,7 @@
         const citizen = this.citizens.byId[i];
         if (!citizen || citizen.dead) continue;
         if (!hungriest || citizen.hunger > hungriest.hunger) hungriest = citizen;
+        if (!mostExposed || citizen.infection > mostExposed.infection) mostExposed = citizen;
       }
       for (let i = 0; i < this.map.records.length; i++) {
         const record = this.map.records[i],
@@ -2132,13 +2139,25 @@
         )
           stalled = record;
       }
-      if (hungriest && hungriest.hunger >= 72)
+      if (hungriest && hungriest.hunger >= 50)
         alerts.push({
           kind: "food",
           title: "Hambre crítica",
           detail: "Habitante " + hungriest.cid + " · " + Math.round(hungriest.hunger) + "%",
           target: "citizen",
           id: hungriest.cid,
+        });
+      if (mostExposed && mostExposed.infection >= 20)
+        alerts.push({
+          kind: "medicine",
+          title: "Exposición infecciosa",
+          detail:
+            (mostExposed.name || "Habitante " + mostExposed.cid) +
+            " · " +
+            Math.round(mostExposed.infection) +
+            "%",
+          target: "citizen",
+          id: mostExposed.cid,
         });
       if (stats.population > housing)
         alerts.push({

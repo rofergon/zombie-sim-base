@@ -15,7 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
           zone: { hqId: 4 },
         },
         v4 = ZS.ZoneSave.migrateV3(v3),
-        v14 = ZS.ZoneSave.migrate(v4),
+        v16 = ZS.ZoneSave.migrate(v4),
         oldPriority = ZS.ZoneSave.migrate({
           v: 13,
           world: { seed: 90, configured: true, source: "procedural", size: "classic" },
@@ -34,14 +34,16 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
             ],
           },
         });
-      return { v4, v14, oldPriority };
+      return { v4, v16, oldPriority };
     });
     assert.equal(migration.v4.v, 4);
     assert.equal(migration.v4.zone.hqId, 4);
-    assert.equal(migration.v14.v, 14);
-    assert.equal(migration.v14.world.seed, 88);
-    assert.equal(migration.v14.clock.minute, 611);
-    assert.equal(migration.v14.world.source, "procedural");
+    assert.equal(migration.v16.v, 16);
+    assert.equal(migration.v16.world.seed, 88);
+    assert.equal(migration.v16.clock.minute, 611);
+    assert.equal(migration.v16.world.source, "procedural");
+    assert.equal(migration.v16.zone.armory.length, 6);
+    assert.equal(migration.v16.zone.weaponDrops.length, 0);
     assert.equal(migration.oldPriority.zone.jobs[0].priority, 4);
     assert.equal(migration.oldPriority.zone.workPolicy.priorities.length, 8);
     assert.equal(migration.oldPriority.zone.workPolicy.max.length, 8);
@@ -377,7 +379,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(restored.jobs, beforeSave.jobs);
     assert.equal(restored.seed, beforeSave.seed);
     assertNoErrors(sim.errors, "zone workers");
-    process.stdout.write("✓ v3 → v4 → v14 and v14 worker round-trip\n");
+    process.stdout.write("✓ v3 → v4 → v16 and v16 worker round-trip\n");
     process.stdout.write("✓ population, hunger, salvage and conservation\n");
     process.stdout.write("✓ six-level priorities, category caps, preemption and stalled work\n");
     process.stdout.write("✓ replacement and dusk return\n");

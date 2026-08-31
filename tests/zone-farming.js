@@ -15,6 +15,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         U = CFG.BUILDING_USE,
         T = CFG.TECH,
         K = CFG.FARM_KIND;
+      scenario.map.hq.capacity = 10000;
       for (let i = 0; i < R.COUNT; i++) scenario.state.stock[i] = 500;
       const targets = scenario.map.records
         .filter((record) => record !== scenario.map.hq && scenario.map.reachable(record))
@@ -57,6 +58,10 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       targets[1].powered = true;
       targets[2].powered = true;
       targets[3].powered = true;
+      for (let i = 0; i < R.COUNT; i++) scenario.state.stock[i] = 0;
+      scenario.state.stock[R.WOOD] = 10;
+      scenario.state.stock[R.METAL] = 10;
+      scenario.state.stock[R.FERTILIZER] = 10;
 
       const hq = scenario.map.hq;
       let point = null;
@@ -194,8 +199,8 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         greenhouseFertilized: scenario.map.at(buildingIds[2]).fertilized,
       };
     }, farming);
-    assert.equal(restored.version, 14);
-    assert.equal(restored.resources, 10);
+    assert.equal(restored.version, 16);
+    assert.equal(restored.resources, 11);
     assert.equal(restored.field.kind, 1);
     assert.equal(restored.field.fertilized, true);
     assert.equal(restored.fieldJob.capacity, 2);

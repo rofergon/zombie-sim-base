@@ -323,6 +323,23 @@ function denseOsmFixture() {
       };
     }, routeJob);
     assert.ok(routeProgress.remaining < routeJob.initial || routeProgress.state === 2);
+    await page.evaluate(() => {
+      const scenario = ZS.scenario,
+        R = ZS.ZoneConfig.RESOURCE,
+        squad = scenario.squads.list[0],
+        point = scenario.map.hq.shape.door.inner;
+      scenario.squads.clearOrders(squad);
+      scenario.state.stock[R.FOOD] = Math.max(6, scenario.state.stock[R.FOOD]);
+      scenario.state.stock[R.AMMO] = Math.max(2, scenario.state.stock[R.AMMO]);
+      for (let i = 0; i < squad.members.length; i++) {
+        const member = scenario.citizens.at(squad.members[i]);
+        member.x = point.x + (i - 1.5) * 3;
+        member.y = point.y;
+        member.vx = member.vy = 0;
+        member.bld = scenario.map.hq.id;
+      }
+      scenario._markUI();
+    });
     await page.locator('[data-system="expedition"]').click();
     assert.equal(await page.locator("[data-expedition-region]").count(), 25);
     const enabled = page.locator("[data-expedition-region]:not(:disabled)").first();
