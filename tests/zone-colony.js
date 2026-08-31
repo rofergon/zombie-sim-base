@@ -367,6 +367,21 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         civilian.workTarget.x === shelter.shape.door.inner.x &&
         civilian.workTarget.y === shelter.shape.door.inner.y;
 
+      const originalCircle = ZS.wcirc,
+        drawnRadii = [],
+        context = document.createElement("canvas").getContext("2d"),
+        squadRange = scenario.weapons.squadRange(squad),
+        towerRange = fortifications.attackRange(tower);
+      ZS.wcirc = function (c, x, y, radius, seed, jitter) {
+        drawnRadii.push(radius);
+        return originalCircle(c, x, y, radius, seed, jitter);
+      };
+      scenario.hoverAgent = shooter;
+      scenario.hoverFortification = tower;
+      scenario.drawOverlay(context);
+      ZS.wcirc = originalCircle;
+      const hoverRanges = drawnRadii.includes(squadRange) && drawnRadii.includes(towerRange);
+
       scenario.state.minute = CFG.CLOCK.NIGHT - 30;
       scenario.defense.update(0, performance.now() / 1000, nav);
       const warning = scenario.defense.warning(),
@@ -401,6 +416,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         garrisonFire,
         garrisonIngress,
         shelterTargeted,
+        hoverRanges,
         warning,
         variantSpeeds: [
           scenario.defense.enemySpeed({ zoneEnemyType: CFG.ENEMY.SHAMBLER }),
@@ -442,6 +458,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(activeDefense.garrisonFire, true);
     assert.equal(activeDefense.garrisonIngress, true);
     assert.equal(activeDefense.shelterTargeted, true);
+    assert.equal(activeDefense.hoverRanges, true);
     assert.equal(activeDefense.warning.active, true);
     assert.equal(activeDefense.warning.minutes, 30);
     assert.match(activeDefense.warning.direction, /^(norte|este|sur|oeste)$/);

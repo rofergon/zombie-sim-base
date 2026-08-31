@@ -72,6 +72,12 @@
       return kind >= F.WALL && kind <= F.TRAP;
     }
 
+    attackRange(record) {
+      return record && record.weapon > W.MACHETE && this._hasTowerAmmo(record)
+        ? CFG.DEFENSE.TOWER_RANGE
+        : CFG.DEFENSE.BOW_RANGE;
+    }
+
     canAfford(kind) {
       const cost = this.cost(kind);
       if (!cost) return false;
@@ -307,7 +313,7 @@
       }
       if (record.attackT > 0 || !record.occupied) return;
       const firearm = record.weapon > W.MACHETE && this._hasTowerAmmo(record),
-        range = firearm ? CFG.DEFENSE.TOWER_RANGE : CFG.DEFENSE.BOW_RANGE;
+        range = this.attackRange(record);
       let target = null,
         best = range * range;
       for (let i = 0; i < this.agents.length; i++) {

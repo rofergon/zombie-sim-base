@@ -52,6 +52,8 @@
       this.selectedGatherJob = null;
       this.squadRosterOpen = false;
       this.hoverBuilding = null;
+      this.hoverAgent = null;
+      this.hoverFortification = null;
       this.spacePan = false;
       this.commandMode = null;
       this.areaTargets = [];
@@ -700,6 +702,31 @@
               1.4,
             );
         }
+        c.setLineDash(SOLID_LINE);
+      }
+      const hoverSquad = this.hoverAgent && this.squads.at(this.hoverAgent.squadId);
+      if (hoverSquad || this.hoverFortification) {
+        c.setLineDash(ROUTE_DASH);
+        c.strokeStyle = "rgba(125,72,48,0.55)";
+        c.lineWidth = 1.5;
+        if (hoverSquad)
+          ZS.wcirc(
+            c,
+            this.hoverAgent.x,
+            this.hoverAgent.y,
+            this.weapons.squadRange(hoverSquad),
+            this.hoverAgent.seed + 1701,
+            1.4,
+          );
+        if (this.hoverFortification)
+          ZS.wcirc(
+            c,
+            this.hoverFortification.x,
+            this.hoverFortification.y,
+            this.fortifications.attackRange(this.hoverFortification),
+            this.hoverFortification.id * 47.13 + 1701,
+            1.4,
+          );
         c.setLineDash(SOLID_LINE);
       }
       if (this.drag.active) {
@@ -2090,8 +2117,24 @@
         building = vehicle ? null : this.map.buildingAt(point.x, point.y),
         gatherJob = this.gathering.atPoint(point.x, point.y, cam.zoom),
         drop = this.weapons.atPoint(point.x, point.y, cam.zoom),
+        fortification = this.fortifications.atPoint(point.x, point.y),
         squads = this._selectedSquads();
       this.hoverBuilding = building;
+      this.hoverAgent = null;
+      this.hoverFortification =
+        fortification && fortification.kind === CFG.FORTIFICATION.TOWER ? fortification : null;
+      let best = Math.pow(CFG.AGENT.SELECT_R / Math.max(0.5, cam.zoom), 2);
+      for (let i = 0; this.agents && i < this.agents.length; i++) {
+        const agent = this.agents[i];
+        if (!agent.zoneCitizen || agent.dead || agent.away || agent.squadId === null) continue;
+        const dx = agent.x - point.x,
+          dy = agent.y - point.y,
+          distance = dx * dx + dy * dy;
+        if (distance < best) {
+          best = distance;
+          this.hoverAgent = agent;
+        }
+      }
       let hint = "Clic izq. seleccionar";
       if (this.commandMode && this.commandMode.startsWith("defense:")) {
         const value = this.commandMode.slice(8),
@@ -2143,7 +2186,10 @@
           " armas · " +
           contents.resources +
           " suministros";
-      } else if (gatherJob)
+      } else if (this.hoverAgent)
+        hint = "Patrulla " + this.hoverAgent.squadId + " · alcance de ataque";
+      else if (this.hoverFortification) hint = "Torre · alcance de ataque";
+      else if (gatherJob)
         hint =
           "Clic para gestionar área de " +
           this.gathering.label(gatherJob.resource) +
@@ -2159,6 +2205,8 @@
 
     _clearHover() {
       this.hoverBuilding = null;
+      this.hoverAgent = null;
+      this.hoverFortification = null;
       this.ui.hideMapHint();
     }
 
