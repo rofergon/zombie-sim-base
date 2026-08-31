@@ -91,7 +91,8 @@
           this.state.day * CFG.HORDE.PER_DAY +
           Math.floor(population / 20) +
           Math.floor(adapted / 3)) *
-          (this.scenario.campaign ? this.scenario.campaign.nightMultiplier() : 1),
+          (this.scenario.campaign ? this.scenario.campaign.nightMultiplier() : 1) *
+          (this.scenario.threats ? this.scenario.threats.nightMultiplier() : 1),
       );
       this.data.pending = this.spawnRemaining;
       this.data.live = 0;
@@ -196,7 +197,7 @@
         best = CFG.HORDE.AGGRO_RANGE * CFG.HORDE.AGGRO_RANGE;
       for (let i = 0; i < this.citizens.byId.length; i++) {
         const candidate = this.citizens.byId[i];
-        if (!candidate || candidate.dead) continue;
+        if (!candidate || candidate.dead || candidate.away) continue;
         const dx = candidate.x - enemy.x,
           dy = candidate.y - enemy.y,
           distance = dx * dx + dy * dy;
@@ -217,6 +218,7 @@
             citizen.hp -= this.enemyDamage(enemy) * cover;
             citizen.flash = 0.12;
             citizen.moral = Math.max(0, citizen.moral - 3);
+            this.citizens.expose(citizen, 5 + ZS.hash(enemy.seed + citizen.cid * 31) * 10);
             if (citizen.hp <= 0) {
               this.data.citizensLost++;
               this.citizens.kill(citizen);

@@ -15,7 +15,8 @@
     GRAIN: 7,
     MEAT: 8,
     FERTILIZER: 9,
-    COUNT: 10,
+    FUEL: 10,
+    COUNT: 11,
   });
 
   const JOB = Object.freeze({
@@ -104,7 +105,12 @@
     RETURN_HQ: 5,
     ATTACK_MOVE: 6,
     PICKUP: 7,
+    BOARD: 8,
   });
+
+  const VEHICLE = Object.freeze({ CAR: 1, VAN: 2, TRUCK: 3, COUNT: 4 });
+  const THREAT = Object.freeze({ LAIR: 1, RAIDERS: 2, COUNT: 3 });
+  const SKILL = Object.freeze({ COMBAT: 0, SCAVENGE: 1, LABOR: 2, COUNT: 3 });
 
   const FORTIFICATION = Object.freeze({ WALL: 1, GATE: 2, TOWER: 3, TRAP: 4, COUNT: 5 });
   const ENEMY = Object.freeze({ SHAMBLER: 0, RUNNER: 1, BRUTE: 2, COUNT: 3 });
@@ -142,7 +148,7 @@
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 15,
+    SAVE_VERSION: 16,
     RESOURCE,
     JOB,
     ROLE,
@@ -152,6 +158,9 @@
     WORK_KIND,
     BUILDING_USE,
     ORDER,
+    VEHICLE,
+    THREAT,
+    SKILL,
     FORTIFICATION,
     ENEMY,
     POI,
@@ -232,8 +241,20 @@
       STARVE_HP_PER_SECOND: 0.08,
       REST_MORAL_PER_SECOND: 0.08,
       CARRY_CAPACITY: 8,
+      INFECTION_MAX: 100,
+      INFECTION_DECAY_MEDBAY: 0.8,
+      IMMIGRATION_DAYS: 3,
+      SKILL_XP_PER_LEVEL: 12,
     }),
-    STOCK: Object.freeze({ FOOD: 80, WOOD: 0, METAL: 0, BRICK: 0, AMMO: 32, MEDICINE: 4 }),
+    STOCK: Object.freeze({
+      FOOD: 80,
+      WOOD: 0,
+      METAL: 0,
+      BRICK: 0,
+      AMMO: 32,
+      MEDICINE: 4,
+      FUEL: 6,
+    }),
     TASK: Object.freeze({
       SALVAGE_CAPACITY: 3,
       SALVAGE_SECONDS: 1.8,
@@ -254,6 +275,20 @@
         PRIORITY.MEDIUM,
         PRIORITY.LOW,
       ]),
+    }),
+    VEHICLES: Object.freeze({
+      RECOVERY_SECONDS: 4,
+      EXPEDITION_FUEL: 2,
+      EXPEDITION_SPEED: Object.freeze([1, 1.55, 1.35, 1.18]),
+      CAPACITY: Object.freeze([0, 24, 48, 90]),
+      HP: Object.freeze([0, 90, 125, 180]),
+      MAP_COUNT: Object.freeze({ classic: 2, compact: 2, standard: 5, large: 8 }),
+    }),
+    THREATS: Object.freeze({
+      SITE_COUNT: 4,
+      LAIR_NIGHT_PRESSURE: 0.1,
+      RAID_INTERVAL_DAYS: 2,
+      RAID_LOSS: 5,
     }),
     GATHER: Object.freeze({
       DEFAULT_WORKERS: 2,
