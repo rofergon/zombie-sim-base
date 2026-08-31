@@ -8,6 +8,7 @@
   const R = CFG.RESOURCE;
   const P = CFG.POI;
   const DEMOLITION_SECONDS = 0.48;
+  const STATUS = Object.freeze({ BUILT: "built", BUILD: "build", SALVAGE: "salvage" });
 
   const USE_LABEL = Object.freeze({
     [USE.ABANDONED]: "abandonado",
@@ -736,6 +737,8 @@
         return;
       }
       layers = layers || {};
+      const status = this.buildingStatus(record, job);
+      if (status) this._drawStatusWash(c, shape, status);
       if (
         (layers.adapted && record.use !== USE.ABANDONED) ||
         (layers.loot && record.use === USE.ABANDONED && this.lootTotal(record) > 0) ||
@@ -874,6 +877,48 @@
       }
     }
 
+    buildingStatus(record, job) {
+      if (!record || record.demolished) return "";
+      if (record.demolitionT > 0 || (job && job.type === CFG.JOB.SALVAGE)) return STATUS.SALVAGE;
+      if (job && job.type === CFG.JOB.BUILD) return STATUS.BUILD;
+      return record.use !== USE.ABANDONED ? STATUS.BUILT : "";
+    }
+
+    drawBuildingStatusIcon(c, record, status, zoom) {
+      if (!record || !record.shape || !status) return;
+      const shape = record.shape,
+        scale = Math.max(1, 1 / Math.max(0.05, zoom || 1)),
+        x = record.cx,
+        y = record.cy,
+        seed = shape.seed + 2101,
+        color =
+          status === STATUS.BUILD
+            ? "rgba(30,139,190,0.96)"
+            : status === STATUS.SALVAGE
+              ? "rgba(166,61,48,0.96)"
+              : "rgba(61,132,73,0.96)";
+      c.save();
+      c.fillStyle = "rgba(246,241,227,0.94)";
+      c.strokeStyle = color;
+      c.lineWidth = 2.2 * scale;
+      ZS.wcirc(c, x, y, 10 * scale, seed, 0.8 * scale);
+      c.fill();
+      c.stroke();
+      c.strokeStyle = color;
+      c.lineWidth = 2.4 * scale;
+      if (status === STATUS.BUILD) {
+        ZS.wline(c, x - 4 * scale, y + 5 * scale, x + 3 * scale, y - 4 * scale, seed + 11, scale);
+        ZS.wline(c, x - scale, y - 5 * scale, x + 6 * scale, y, seed + 17, scale);
+      } else if (status === STATUS.SALVAGE) {
+        ZS.wline(c, x - 5 * scale, y - 5 * scale, x + 5 * scale, y + 5 * scale, seed + 23, scale);
+        ZS.wline(c, x + 5 * scale, y - 5 * scale, x - 5 * scale, y + 5 * scale, seed + 29, scale);
+      } else {
+        ZS.wline(c, x - 6 * scale, y, x - scale, y + 5 * scale, seed + 31, scale);
+        ZS.wline(c, x - scale, y + 5 * scale, x + 7 * scale, y - 5 * scale, seed + 37, scale);
+      }
+      c.restore();
+    }
+
     drawHeadquartersFlag(c, zoom) {
       const record = this.hq;
       if (!record || !record.flag) return;
@@ -917,6 +962,29 @@
         const room = shape.rooms[i];
         c.fillRect(room[0], room[1], room[2], room[3]);
       }
+    }
+
+    _drawStatusWash(c, shape, status) {
+      const build = status === STATUS.BUILD,
+        salvage = status === STATUS.SALVAGE;
+      c.save();
+      c.fillStyle = build
+        ? "rgba(30,139,190,0.18)"
+        : salvage
+          ? "rgba(166,61,48,0.17)"
+          : "rgba(61,132,73,0.14)";
+      this._fillShape(c, shape);
+      c.strokeStyle = build
+        ? "rgba(30,139,190,0.92)"
+        : salvage
+          ? "rgba(166,61,48,0.9)"
+          : "rgba(61,132,73,0.78)";
+      c.lineWidth = build || salvage ? 2 : 1.5;
+      if (shape.halo || shape.footprint) {
+        ZS.wpoly(c, shape.halo || shape.footprint, shape.seed + 2051, 0.7, true);
+        c.stroke();
+      } else ZS.sketchRect(c, shape.x - 4, shape.y - 4, shape.w + 8, shape.h + 8);
+      c.restore();
     }
 
     _drawDemolition(c, record, shape) {

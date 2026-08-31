@@ -520,14 +520,61 @@
         this.mapLayers,
         job,
       );
-      if (!record || (!job && !record.revealed)) return;
-      c.save();
-      c.strokeStyle = job ? "rgba(126,89,48,0.8)" : "rgba(79,105,55,0.7)";
-      c.fillStyle = job ? "rgba(191,143,73,0.18)" : "rgba(112,148,72,0.16)";
-      c.lineWidth = 1.3;
-      ZS.wcirc(c, record.cx, shape.y - 10, job ? 6 : 4, shape.seed + 509, 0.8);
-      c.fill();
-      c.restore();
+    }
+
+    _drawBuildingStatuses(c, zoom) {
+      const records = this.map.records,
+        jobs = this.tasks.jobs,
+        visible = this.world && this.world.visibleRect;
+      for (let i = 0; i < records.length; i++) {
+        const record = records[i],
+          shape = record.shape;
+        if (
+          record.demolished ||
+          record.use === CFG.BUILDING_USE.ABANDONED ||
+          (visible &&
+            (shape.x + shape.w < visible.x0 ||
+              shape.x > visible.x1 ||
+              shape.y + shape.h < visible.y0 ||
+              shape.y > visible.y1))
+        )
+          continue;
+        this.map.drawBuildingStatusIcon(c, record, "built", zoom);
+      }
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        if (
+          job.state !== CFG.JOB_STATE.ACTIVE ||
+          job.targetKind !== "building" ||
+          (job.type !== CFG.JOB.BUILD && job.type !== CFG.JOB.SALVAGE)
+        )
+          continue;
+        const record = this.map.at(job.targetId),
+          shape = record && record.shape;
+        if (
+          !shape ||
+          (visible &&
+            (shape.x + shape.w < visible.x0 ||
+              shape.x > visible.x1 ||
+              shape.y + shape.h < visible.y0 ||
+              shape.y > visible.y1))
+        )
+          continue;
+        this.map.drawBuildingStatusIcon(c, record, this.map.buildingStatus(record, job), zoom);
+      }
+      for (let i = 0; i < this.map.demolitions.length; i++) {
+        const record = this.map.demolitions[i],
+          shape = record.shape;
+        if (
+          visible &&
+          (shape.x + shape.w < visible.x0 ||
+            shape.x > visible.x1 ||
+            shape.y + shape.h < visible.y0 ||
+            shape.y > visible.y1)
+        )
+          continue;
+        this.map.drawBuildingStatusIcon(c, record, "salvage", zoom);
+      }
     }
 
     _drawSelectionRect(c, x, y, w, h, seed, zoom) {
@@ -589,6 +636,7 @@
       c.save();
       c.lineCap = "round";
       c.lineJoin = "round";
+      this._drawBuildingStatuses(c, zoom);
       this.fortifications.drawOverlay(c, this.mapLayers.defenses);
       this.agriculture.drawOverlay(c, this.mapLayers.production);
       this.map.drawHeadquartersFlag(c, zoom);

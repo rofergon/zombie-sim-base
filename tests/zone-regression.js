@@ -53,6 +53,27 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(established.agents, 16);
     assert.equal(established.scale, 1);
     assert.equal(established.seed, 12345);
+    const buildingStatuses = await sim.page.evaluate(() => {
+      const scenario = ZS.scenario,
+        CFG = ZS.ZoneConfig,
+        abandoned = scenario.map.records.find(
+          (record) => record !== scenario.map.hq && record.use === CFG.BUILDING_USE.ABANDONED,
+        ),
+        build = { type: CFG.JOB.BUILD },
+        salvage = { type: CFG.JOB.SALVAGE };
+      return {
+        built: scenario.map.buildingStatus(scenario.map.hq, null),
+        abandoned: scenario.map.buildingStatus(abandoned, null),
+        build: scenario.map.buildingStatus(abandoned, build),
+        salvage: scenario.map.buildingStatus(abandoned, salvage),
+      };
+    });
+    assert.deepEqual(buildingStatuses, {
+      built: "built",
+      abandoned: "",
+      build: "build",
+      salvage: "salvage",
+    });
     assert.equal(await sim.page.locator("#zone-selection-title").textContent(), "Cuartel general");
     assert.equal(await sim.page.locator(".zone-main-dock").isVisible(), true);
     assert.equal(await sim.page.locator(".zone-metric").count(), 10);
@@ -358,6 +379,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assertNoErrors(sim.errors, "zone.html");
     process.stdout.write("✓ save migrations and round-trip\n");
     process.stdout.write("✓ HQ setup and starting team\n");
+    process.stdout.write("✓ persistent building status mapping\n");
     process.stdout.write("✓ squad-first box selection and contextual orders\n");
     process.stdout.write("✓ multi-squad orders, area scavenge and numeric control groups\n");
     process.stdout.write("✓ pause and fixed-step ×4 clock\n");
