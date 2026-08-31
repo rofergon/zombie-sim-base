@@ -893,7 +893,7 @@
         R.METAL +
         '"><span class="zone-icon zi-metal"></span><span><b>METAL</b><small>' +
         gathering.metal +
-        ' disponible en edificios</small></span><em>MARCAR ÁREA</em></button></div>' +
+        " disponible en edificios</small></span><em>MARCAR ÁREA</em></button></div>" +
         '<h3 class="zone-system-subtitle">ÁREAS ACTIVAS</h3><div class="zone-gather-list">';
       for (let i = 0; i < gathering.areas.length; i++) {
         const area = gathering.areas[i],
@@ -915,13 +915,13 @@
           area.total +
           " restantes · " +
           area.nodes +
-          " puntos</small><i><em style=\"width:" +
+          ' puntos</small><i><em style="width:' +
           progress.toFixed(1) +
-          '%\"></em></i></span></button><div class="zone-gather-controls"><button type="button" data-gather-id="' +
+          '%"></em></i></span></button><div class="zone-gather-controls"><button type="button" data-gather-id="' +
           area.id +
           '" data-gather-staff="-1" ' +
           (area.capacity <= 0 ? "disabled" : "") +
-          ">−</button><b title=\"trabajadores asignados / solicitados\">" +
+          '>−</button><b title="trabajadores asignados / solicitados">' +
           area.assigned +
           "/" +
           area.capacity +

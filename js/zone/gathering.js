@@ -314,7 +314,7 @@
       ZS.wcirc(c, cx, cy, radius, job.id * 37 + 1401, 1.1);
       c.fill();
       c.fillStyle = "rgba(48,77,82,0.95)";
-      c.font = 'bold ' + Math.max(8, 9 / Math.max(0.65, zoom)) + 'px "Segoe Script", cursive';
+      c.font = "bold " + Math.max(8, 9 / Math.max(0.65, zoom)) + 'px "Segoe Script", cursive';
       c.textAlign = "center";
       c.textBaseline = "middle";
       c.fillText(job.resource === R.WOOD ? "M" : "Fe", cx, cy - 1);
@@ -323,7 +323,7 @@
       ZS.wcirc(c, cx + radius * 0.72, cy - radius * 0.72, radius * 0.43, job.id * 37 + 1409, 0.6);
       c.fill();
       c.fillStyle = "rgba(48,77,82,0.95)";
-      c.font = 'bold ' + Math.max(6, 7 / Math.max(0.65, zoom)) + 'px sans-serif';
+      c.font = "bold " + Math.max(6, 7 / Math.max(0.65, zoom)) + "px sans-serif";
       c.fillText(String(job.assigned.length), cx + radius * 0.72, cy - radius * 0.72);
       c.restore();
     }
@@ -366,12 +366,12 @@
     _validMetal(record) {
       return Boolean(
         record &&
-          record !== this.map.hq &&
-          record.use === CFG.BUILDING_USE.ABANDONED &&
-          !record.demolished &&
-          !record.demolitionT &&
-          record.salvage[R.METAL] > 0 &&
-          this.map.reachable(record),
+        record !== this.map.hq &&
+        record.use === CFG.BUILDING_USE.ABANDONED &&
+        !record.demolished &&
+        !record.demolitionT &&
+        record.salvage[R.METAL] > 0 &&
+        this.map.reachable(record),
       );
     }
 

@@ -184,6 +184,25 @@ function denseOsmFixture() {
       stableHash: true,
       stableMigrationHash: true,
     });
+    const longDetour = await base.page.evaluate(() => {
+      const world = { w: 7200, h: 7200 },
+        nav = new ZS.Nav(world, ZS.ZoneConfig.GEO.NAV_CELL);
+      nav.markRect(3600, 0, 10, 6700, 0);
+      const started = performance.now(),
+        path = nav.astar(1800, 1800, 5400, 1800, false);
+      return {
+        found: Boolean(path && path.length),
+        nodes: path ? path.length : 0,
+        elapsed: performance.now() - started,
+      };
+    });
+    assert.equal(longDetour.found, true, "long geographic detour should not exhaust A*");
+    assert.ok(longDetour.nodes > 2);
+    const densePack = await base.page.evaluate(
+      ({ raw, lat, lon }) =>
+        ZS.ZoneMapPack.fromOverpass(raw, { lat, lon, name: "Ciudad de rutas" }, "standard"),
+      { raw: denseOsmFixture(), lat: 4.65, lon: -74.05 },
+    );
     assert.equal(
       await base.page.evaluate(() => {
         const xml =
@@ -246,7 +265,7 @@ function denseOsmFixture() {
         buildings = scenario.map.records,
         validDoors = buildings.every((record) => {
           const door = record.shape.door;
-          if (!door || nav.val[door.frontIdx] !== 1) return false;
+          if (!door || scenario.map.entryPoint(record) !== door.inner) return false;
           const frontX = door.frontIdx % nav.w,
             frontY = (door.frontIdx / nav.w) | 0;
           return door.cells.some((index) => {
@@ -325,6 +344,83 @@ function denseOsmFixture() {
     process.stdout.write(
       "✓ stable OSM MapPack, chunked world, elevation and connected expeditions\n",
     );
+
+    const routeContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await routeContext.addInitScript((fixturePack) => {
+      window.ZS_TEST_MAP_PACK = fixturePack;
+    }, densePack);
+    const routePage = await routeContext.newPage(),
+      routeErrors = [];
+    routePage.on("pageerror", (error) => routeErrors.push(String(error)));
+    routePage.on("console", (message) => {
+      if (message.type() === "error") routeErrors.push(message.text());
+    });
+    await routePage.goto(pageUrl("zone.html", { seed: 777, record: 1 }));
+    await routePage.waitForFunction(() => window.ZS && ZS.debug && ZS.scenario.map.recommended);
+    await routePage.locator("#zone-hq-action").click();
+    const queuedRoute = await routePage.evaluate(() => {
+      const scenario = ZS.scenario,
+        squad = scenario.squads.list[0],
+        desired = [
+          { x: 6000, y: 6000 },
+          { x: 6000, y: 1200 },
+          { x: 1200, y: 6000 },
+          { x: 3600, y: 3600 },
+        ],
+        targets = [];
+      scenario.maintain = () => {};
+      for (let i = 0; i < desired.length; i++) {
+        let best = null,
+          distance = Infinity;
+        for (let j = 0; j < scenario.map.records.length; j++) {
+          const record = scenario.map.records[j],
+            d = Math.hypot(record.cx - desired[i].x, record.cy - desired[i].y);
+          if (
+            record !== scenario.map.hq &&
+            !targets.includes(record) &&
+            scenario.map.reachable(record) &&
+            d < distance
+          ) {
+            best = record;
+            distance = d;
+          }
+        }
+        best.looted = true;
+        targets.push(best);
+      }
+      scenario.squads.clearOrders(squad);
+      for (let i = 0; i < targets.length; i++)
+        scenario.squads.issueContext(squad, targets[i].cx, targets[i].cy, i > 0, targets[i]);
+      const trace = (window.ZS_ROUTE_TRACE = []),
+        originalAdvance = scenario.squads._advance;
+      scenario.squads._advance = function (current) {
+        const order = current.orders[current.orderIndex],
+          leader = scenario.citizens.at(current.members[0]);
+        if (order && order.kind === ZS.ZoneConfig.ORDER.ENTER)
+          trace.push({ expected: order.buildingId, actual: leader.bld });
+        return originalAdvance.call(this, current);
+      };
+      return { issued: squad.orders.length, targets: targets.map((record) => record.id) };
+    });
+    assert.equal(queuedRoute.issued, 4);
+    await routePage.evaluate(() => ZS.recording.advance(380));
+    const routeResult = await routePage.evaluate(() => ({
+      trace: window.ZS_ROUTE_TRACE,
+      pending: ZS.scenario.squads.list[0].orders.length,
+    }));
+    assert.deepEqual(
+      routeResult.trace.map((entry) => entry.expected),
+      queuedRoute.targets,
+      "multi-step geographic route should visit every queued building",
+    );
+    assert.ok(
+      routeResult.trace.every((entry) => entry.actual === entry.expected),
+      "an entry order must complete inside its requested building",
+    );
+    assert.equal(routeResult.pending, 0);
+    assertNoErrors(routeErrors, "long geographic squad route");
+    await routeContext.close();
+    process.stdout.write("✓ long OSM squad route enters every queued building without stalling\n");
 
     const previewContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
     await previewContext.addInitScript(() => {

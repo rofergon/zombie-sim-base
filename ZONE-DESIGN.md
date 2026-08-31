@@ -205,6 +205,22 @@ The existing pages remain independent regression targets:
   perimeter placement, can be damaged by the night horde, and expose progress,
   staffing, priority, recipes and weather in the Cultivos panel.
 
+### Phase 10 — territorial resource collection
+
+- The bottom-left Recolección system mirrors the reference loop: choose wood
+  or metal, drag a work area, inspect the blue-highlighted nodes and adjust the
+  area's requested workers with direct −/+ controls.
+- Existing procedural trees are finite wood nodes and become persistent sketch
+  stumps when felled. Abandoned buildings expose only their existing metal
+  salvage to collection; the structure and its other demolition materials stay
+  intact.
+- Every area is a normal event-driven `GATHER` job with priority, finite nodes,
+  worker cargo, an HQ deposit trip and a clickable map marker. Overlapping
+  active areas cannot claim the same node.
+- Save v13 persists gathering bounds, node IDs and harvested tree IDs. Resource
+  conservation continues through the shared worker-cargo and settlement-stock
+  invariant.
+
 ## Script ownership
 
 All scripts are classic IIFEs on `window.ZS`; `zone.html` defines the load
@@ -220,6 +236,7 @@ order and remains usable through `file://`.
 | `js/zone/orders.js` | Input-created agent command queues |
 | `js/zone/citizens.js` | Citizen identity, needs, roles and persistence snapshots |
 | `js/zone/tasks.js` | Event-driven job board and salvage worker state machine |
+| `js/zone/gathering.js` | Territorial wood/metal nodes, work-area markers, collection and persistence |
 | `js/zone/squads.js` | Shared squad orders, formation trail, patrol and inventory |
 | `js/zone/scavenge.js` | Seeded loot, reveal, encounters and limited combat |
 | `js/zone/adaptations.js` | Building costs, research, power, production and repairs |
@@ -286,7 +303,7 @@ sequence.
   zone: {
     hqId, initialized, stock,
     nextCitizenId, citizens,
-    nextJobId, jobs,
+    nextJobId, jobs, harvestedTrees,
     nextSquadId, squads,
     nextFortificationId, fortifications,
     nextFieldId, fields,
@@ -305,7 +322,10 @@ sequence.
 }
 ```
 
-`ZoneSave.migrateV3` through `ZoneSave.migrateV11` are pure/testable steps. A v3
+Gathering jobs add `{ targetKind: "resource", resource, bounds, nodeIds, total }`
+to the shared job record.
+
+`ZoneSave.migrateV3` through `ZoneSave.migrateV12` are pure/testable steps. A v3
 campaign keeps seed, clock and HQ, then initializes its population exactly once
 when the restored map is ready. Gameplay never branches on an old version.
 
@@ -325,8 +345,10 @@ npm test
 
 `tests/smoke.js` proves that every page initializes. `tests/zone-regression.js`
 keeps phase 0/1 coverage. `tests/zone-workers.js` covers migrations, needs,
-assignment, salvage/conservation and dusk. `tests/zone-squads.js` covers seeded
-loot, formation/patrol, encounter combat, pause, inventory return/resume and
+assignment, salvage/conservation and dusk. `tests/zone-gathering.js` covers
+territorial selection, wood/metal collection, staffing, overlap rejection,
+conservation and the v13 round-trip. `tests/zone-squads.js` covers seeded loot,
+formation/patrol, encounter combat, pause, inventory return/resume and
 save/load. `tests/zone-colony.js` covers v5 → v13 migration, construction
 conservation, power, staffed production, active-defense
 placement/navigation, squad combat orders, advance warning, enemy variants,

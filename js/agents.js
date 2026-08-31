@@ -61,9 +61,26 @@
         } else routeStage = -targetBuilding - 1;
       }
     }
-    const d = Math.hypot(goal.x - a.x, goal.y - a.y);
-    a.wantMove = d >= 16;
-    if (!a.wantMove) return "arrived";
+    let d = Math.hypot(goal.x - a.x, goal.y - a.y);
+    // Reaching a door front completes only the approach stage, never the
+    // building order itself. Continue toward the requested interior point
+    // in the same update so callers cannot advance a queue while still on
+    // the pavement outside.
+    if (routeStage > 0 && d < 16) {
+      goal = tg;
+      routeStage = -routeStage;
+      d = Math.hypot(goal.x - a.x, goal.y - a.y);
+    }
+    const arriveR = routeStage < 0 ? 8 : 16;
+    a.wantMove = d >= arriveR;
+    if (!a.wantMove) {
+      a.path = null;
+      a.pi = 0;
+      a.gx = goal.x;
+      a.gy = goal.y;
+      a.planFailT = 0;
+      return "arrived";
+    }
     const stageChanged = a.routeStage !== routeStage,
       moved =
         a.gx === null ||
@@ -88,6 +105,11 @@
           return "path";
         }
         a.path = null;
+        if (nav.los(a.x, a.y, goal.x, goal.y, isZ, swim)) {
+          a.planFailT = 0;
+          steerToward(a, goal.x, goal.y, sp * terrainSpeed, dt);
+          return "direct";
+        }
         a.planFailT = t + 1;
         return "fail";
       }

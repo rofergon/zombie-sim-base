@@ -31,15 +31,15 @@
         !record ||
         record.demolished ||
         record.demolitionT ||
-        !record.shape.door ||
+        !this.map.entryPoint(record) ||
         record === this.map.hq ||
         record.looted
       )
         return "complete";
-      if (leader.bld !== record.id && Math.hypot(order.x - leader.x, order.y - leader.y) > 15) {
+      if (leader.bld !== record.id) {
         squad.state = "moving to scavenge";
-        ZS.planAndFollow(leader, order, false, CFG.AGENT.SPEED, dt, t, nav);
-        return "moving";
+        const result = ZS.planAndFollow(leader, order, false, CFG.AGENT.SPEED, dt, t, nav);
+        return result === "fail" ? "blocked" : "moving";
       }
       if (!record.revealed) {
         record.revealed = true;

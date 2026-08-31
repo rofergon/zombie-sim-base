@@ -1157,9 +1157,7 @@
     setGatherStaff(id, delta) {
       const job = this.tasks.at(id),
         result = Boolean(
-          job &&
-            job.type === CFG.JOB.GATHER &&
-            this.tasks.setCapacity(id, job.capacity + delta),
+          job && job.type === CFG.JOB.GATHER && this.tasks.setCapacity(id, job.capacity + delta),
         );
       if (!result) this.ui.toast("Ese límite de trabajadores ya está alcanzado.");
       this._markUI();

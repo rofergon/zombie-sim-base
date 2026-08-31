@@ -336,7 +336,8 @@
         shape.hidden = record.demolished;
         this.records.push(record);
         if (record.demolished) continue;
-        if (shape.door && (!largestDoor || area > largestDoor.area)) largestDoor = record;
+        if (this.entryPoint(record) && (!largestDoor || area > largestDoor.area))
+          largestDoor = record;
         if (!this.suitableHQ(record)) continue;
         const dist = Math.hypot(record.cx - cx, record.cy - cy),
           score = area - dist * 14;
@@ -428,14 +429,45 @@
         record &&
         !record.demolished &&
         !record.demolitionT &&
-        record.shape.door &&
+        this.entryPoint(record) &&
         record.area >= this.minHQArea,
       );
     }
 
+    entryPoint(record) {
+      if (!record || record.demolished || record.demolitionT || !record.shape) return null;
+      const door = record.shape.door;
+      if (
+        !door ||
+        !door.inner ||
+        !door.front ||
+        !Number.isInteger(door.frontIdx) ||
+        this.nav.val[door.frontIdx] !== 1 ||
+        ZS.Buildings.cellBldAt(this.nav, door.inner.x, door.inner.y) !== record.id
+      )
+        return null;
+      const frontX = door.frontIdx % this.nav.w,
+        frontY = (door.frontIdx / this.nav.w) | 0;
+      let connected = false;
+      for (let i = 0; i < door.cells.length; i++) {
+        const index = door.cells[i],
+          value = this.nav.val[index],
+          x = index % this.nav.w,
+          y = (index / this.nav.w) | 0;
+        if (
+          (value === 3 || (door.broken && value === 1)) &&
+          Math.abs(x - frontX) + Math.abs(y - frontY) === 1
+        ) {
+          connected = true;
+          break;
+        }
+      }
+      return connected ? door.inner : null;
+    }
+
     reachable(record) {
-      if (!record || record.demolished || record.demolitionT || !record.shape.door) return false;
-      if (!this.hq || !this.hq.shape.door) return true;
+      if (!this.entryPoint(record)) return false;
+      if (!this.hq || !this.entryPoint(this.hq)) return true;
       const from = this.hq.shape.door.accessId,
         to = record.shape.door.accessId;
       return from < 0 || to < 0 || from === to;

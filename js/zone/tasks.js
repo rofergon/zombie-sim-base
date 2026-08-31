@@ -420,10 +420,10 @@
           else {
             const record = this.map.at(job.targetId);
             if (record)
-            for (let i = 0; i < R.COUNT; i++) {
-              record.salvage[i] += worker.carry[i];
-              worker.carry[i] = 0;
-            }
+              for (let i = 0; i < R.COUNT; i++) {
+                record.salvage[i] += worker.carry[i];
+                worker.carry[i] = 0;
+              }
           }
         }
       }

@@ -70,6 +70,7 @@
       squad.trailY = new Float32Array(96);
       squad.trailHead = 0;
       squad.trailCount = 0;
+      this._normalizeOrders(squad);
       this._rebuildRoutePaths(squad);
     }
 
@@ -188,10 +189,10 @@
         buildingId = null;
       if (building) {
         if (!this.map.reachable(building)) return false;
-        const door = building.shape.door;
-        if (!door) return false;
-        tx = door.inner.x;
-        ty = door.inner.y;
+        const entry = this.map.entryPoint(building);
+        if (!entry) return false;
+        tx = entry.x;
+        ty = entry.y;
         buildingId = building.id;
         kind =
           building === this.map.hq || building.looted || building.use !== CFG.BUILDING_USE.ABANDONED
@@ -209,8 +210,8 @@
 
     issueGarrison(squad, building, append) {
       if (!squad || !building || !building.shape || !this.map.reachable(building)) return false;
-      const door = building.shape.door,
-        target = door.inner;
+      const target = this.map.entryPoint(building);
+      if (!target) return false;
       const issued = this.issue(
         squad,
         CFG.ORDER.ENTER,
@@ -230,7 +231,10 @@
       if (!append) this.clearOrders(squad);
       else this._compactOrders(squad);
       if (squad.orders.length - squad.orderIndex >= CFG.AGENT.MAX_ORDERS) return false;
-      const point = this.map.nav.nearestWalkable(x, y, 120, false);
+      const record = Number.isInteger(buildingId) ? this.map.at(buildingId) : null,
+        entry = record && this.map.reachable(record) ? this.map.entryPoint(record) : null,
+        point = record ? entry : this.map.nav.nearestWalkable(x, y, 120, false);
+      if (Number.isInteger(buildingId) && !record) return false;
       if (!point) return false;
       squad.orders.push({ kind, x: point.x, y: point.y, buildingId });
       squad.patrolLoop = false;
@@ -312,8 +316,8 @@
         if (bestRoute < 0 || bestTarget < 0) break;
         const route = routes[bestRoute],
           record = candidates.splice(bestTarget, 1)[0],
-          door = record.shape.door,
-          target = door ? door.inner : record;
+          target = this.map.entryPoint(record);
+        if (!target) continue;
         if (
           this.issue(
             route.squad,
@@ -337,14 +341,14 @@
 
     returnHQ(squad, resumeBuildingId, preserveQueue) {
       if (!squad || !this.map.hq) return false;
-      const door = this.map.hq.shape.door,
-        target = door ? door.inner : this.map.hq,
+      const target = this.map.entryPoint(this.map.hq),
         order = {
           kind: CFG.ORDER.RETURN_HQ,
-          x: target.x === undefined ? target.cx : target.x,
-          y: target.y === undefined ? target.cy : target.y,
+          x: target ? target.x : 0,
+          y: target ? target.y : 0,
           buildingId: this.map.hq.id,
         };
+      if (!target) return false;
       if (preserveQueue && squad.orders[squad.orderIndex]) {
         squad.orders[squad.orderIndex] = order;
         squad.patrolLoop = false;
@@ -466,11 +470,16 @@
       if (order.kind === CFG.ORDER.SCAVENGE && this.scavenge) {
         const result = this.scavenge.updateSquad(squad, order, leader, dt, t, nav);
         if (result === "complete") this._advance(squad);
+        else if (result === "blocked") this._recoverRoute(leader, squad, nav);
         return;
       }
       const moveSpeed =
           CFG.AGENT.SPEED * (squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1),
         result = ZS.planAndFollow(leader, order, false, moveSpeed, dt, t, nav);
+      if (result === "fail") {
+        this._recoverRoute(leader, squad, nav);
+        return;
+      }
       if (result !== "arrived" && leader.bld !== order.buildingId) return;
       if (order.kind === CFG.ORDER.RETURN_HQ || order.kind === CFG.ORDER.ENTER) {
         leader.zoneBuildingId = order.buildingId;
@@ -500,6 +509,39 @@
         }
       }
       this._syncOrderViews(squad);
+    }
+
+    _recoverRoute(leader, squad, nav) {
+      const order = squad.orders[squad.orderIndex],
+        gx = Number.isFinite(leader.gx) ? leader.gx : order.x,
+        gy = Number.isFinite(leader.gy) ? leader.gy : order.y,
+        path = nav.astar(leader.x, leader.y, gx, gy, false, nav.n, false);
+      if (path && path.length) {
+        leader.path = path;
+        leader.pi = 0;
+        leader.gx = gx;
+        leader.gy = gy;
+        leader.navV0 = nav.version;
+        leader.stuckT = 0;
+        leader.planFailT = 0;
+        squad.state = "rerouting";
+        return;
+      }
+      squad.orders.splice(squad.orderIndex, 1);
+      leader.path = null;
+      leader.pi = 0;
+      leader.planFailT = 0;
+      if (!squad.orders.length || (squad.patrolLoop && squad.orders.length < 2)) {
+        this.clearOrders(squad);
+        squad.state = "route blocked";
+      } else {
+        if (squad.orderIndex >= squad.orders.length)
+          squad.orderIndex = squad.patrolLoop ? 0 : squad.orders.length;
+        this._rebuildRoutePaths(squad);
+        this._syncOrderViews(squad);
+        squad.state = "skipping blocked waypoint";
+      }
+      if (this.onChanged) this.onChanged();
     }
 
     _follow(member, squad, dt, nav) {
@@ -570,14 +612,14 @@
           !record.demolished &&
           !record.demolitionT &&
           !record.looted &&
-          this.map.lootTotal(record) > 0
+          this.map.lootTotal(record) > 0 &&
+          this.map.reachable(record)
         ) {
-          const door = record.shape.door,
-            target = door ? door.inner : record;
+          const target = this.map.entryPoint(record);
           squad.orders[squad.orderIndex] = {
             kind: CFG.ORDER.SCAVENGE,
-            x: target.x === undefined ? target.cx : target.x,
-            y: target.y === undefined ? target.cy : target.y,
+            x: target.x,
+            y: target.y,
             buildingId: record.id,
           };
           squad.state = "resuming scavenge";
@@ -588,6 +630,26 @@
       }
       if (this.onChanged) this.onChanged();
       return false;
+    }
+
+    _normalizeOrders(squad) {
+      for (let i = squad.orders.length - 1; i >= 0; i--) {
+        const order = squad.orders[i];
+        let point = null;
+        if (Number.isInteger(order.buildingId)) {
+          const record = this.map.at(order.buildingId);
+          if (record && this.map.reachable(record)) point = this.map.entryPoint(record);
+        } else point = this.map.nav.nearestWalkable(order.x, order.y, 120, false);
+        if (!point) {
+          squad.orders.splice(i, 1);
+          if (i < squad.orderIndex) squad.orderIndex--;
+          continue;
+        }
+        order.x = point.x;
+        order.y = point.y;
+      }
+      squad.orderIndex = Math.max(0, Math.min(squad.orders.length, squad.orderIndex));
+      if (squad.patrolLoop && squad.orders.length < 2) squad.patrolLoop = false;
     }
 
     _rebuildRoutePaths(squad) {

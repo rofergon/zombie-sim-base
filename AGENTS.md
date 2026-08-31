@@ -70,7 +70,7 @@ names the events)
 js/main.js bootstrap: world, camera, input, main loop
 
 `zone.html` additionally loads
-`js/zone/{config,state,map,orders,citizens,tasks,squads,scavenge,campaign,ui}.js` and
+`js/zone/{config,state,map,orders,citizens,tasks,gathering,squads,scavenge,campaign,ui}.js` and
 `js/scenarios/zone.js`. It loads the zombie scenario class as a drawing
 dependency so Zone people and encounter infected call the frozen
 `ScenarioZombie.draw` directly.
@@ -311,8 +311,8 @@ cultivation. The initial population is 16 (four in the first squad and twelve
 workers). Vehicles remain later work.
 
 - **Save schema**: `SAVE_VERSION = 13`. Pure migrations advance v1 through
-  v10 into the current structure. `ZoneSave.normalize` is the only legacy or
-  corrupt-data boundary; gameplay only reads v11.
+  v12 into the current structure. `ZoneSave.normalize` is the only legacy or
+  corrupt-data boundary; gameplay only reads v13.
 - **Citizens** (`js/zone/citizens.js`): stable numeric IDs, HP, morale, hunger,
   role, work state, assignment, cargo and squad membership. Dusk/night returns
   non-critical workers to HQ; resting recovers morale.
@@ -320,6 +320,9 @@ workers). Vehicles remain later work.
   low-frequency safety reconciliation. Workers never scan every task per
   frame. Salvage caches and carried loads are finite and conserved through
   cancellation, replacement and save/load.
+- **Gathering** (`js/zone/gathering.js`): IFZ-style drag areas claim finite
+  tree/abandoned-building nodes for wood or metal, draw paper-blue work markers
+  and persist felled trees without duplicating the settlement inventory.
 - **Squads** (`js/zone/squads.js`): at most four citizens, one order queue and
   one leader A* path. Followers use preallocated formation targets/a leader
   trail, with a safe nearest-walkable recovery only when badly separated.

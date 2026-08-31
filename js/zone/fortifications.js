@@ -259,12 +259,20 @@
       for (let i = 0; i < this.map.records.length; i++) {
         const building = this.map.records[i];
         if (building.demolished) continue;
-        const shape = building.shape;
+        const shape = building.shape,
+          door = shape.door;
         if (
           x + HALF > shape.x - 6 &&
           x - HALF < shape.x + shape.w + 6 &&
           y + HALF > shape.y - 6 &&
           y - HALF < shape.y + shape.h + 6
+        )
+          return false;
+        if (
+          door &&
+          door.front &&
+          Math.abs(door.front.x - x) < SIZE &&
+          Math.abs(door.front.y - y) < SIZE
         )
           return false;
       }

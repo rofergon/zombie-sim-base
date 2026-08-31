@@ -323,9 +323,13 @@
       let expanded = 0;
 
       // Preserve roughly the same searchable world area when a dense map
-      // uses cells smaller than the classic 20px grid.
+      // uses cells smaller than the classic 20px grid. A fixed area is not
+      // enough for routes across several real-city sectors: allow a search
+      // strip proportional to the route span, capped to the whole grid.
       const scaledBudget = Math.round(12000 * (DEFAULT_CELL / this.cell) ** 2),
-        budget = maxExpand || Math.min(this.n, scaledBudget);
+        routeBudget =
+          this.cell < DEFAULT_CELL ? Math.ceil(h(si) * Math.max(this.w, this.h)) : scaledBudget,
+        budget = maxExpand || Math.min(this.n, Math.max(scaledBudget, routeBudget));
       while (heapN) {
         const curF = heapF[0],
           i = heapI[0];
@@ -349,6 +353,10 @@
         }
         if (stamp[i] !== gen || curF > fs[i] + 1e-4) continue;
         if (i === ti) break;
+        // Negative generation stamps are the closed set. Weighted A* may
+        // otherwise reopen the same city cell many times and exhaust the
+        // route budget without making the search frontier any larger.
+        stamp[i] = -gen;
         if (++expanded > budget) return null;
         const ix = i % w,
           iy = (i / w) | 0;
@@ -360,7 +368,7 @@
           if (nx < 0 || ny < 0 || nx >= w || ny >= H) continue;
           const ni = ny * w + nx;
           const v = val[ni];
-          if (!free(v, ni)) continue;
+          if (stamp[ni] === -gen || !free(v, ni)) continue;
           if (dx && dy) {
             // no corner cutting: both orthogonal neighbors must be open
             if (!free(val[iy * w + nx], iy * w + nx) || !free(val[ny * w + ix], ny * w + ix))

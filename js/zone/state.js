@@ -265,13 +265,9 @@
       !raw ||
       !Number.isInteger(raw.id) ||
       raw.id < 1 ||
-      ![
-        CFG.JOB.GATHER,
-        CFG.JOB.SALVAGE,
-        CFG.JOB.BUILD,
-        CFG.JOB.PRODUCE,
-        CFG.JOB.RESEARCH,
-      ].includes(raw.type)
+      ![CFG.JOB.GATHER, CFG.JOB.SALVAGE, CFG.JOB.BUILD, CFG.JOB.PRODUCE, CFG.JOB.RESEARCH].includes(
+        raw.type,
+      )
     )
       return null;
     const assigned = [];
@@ -287,7 +283,11 @@
             : "building",
       nodeIds = [];
     if (raw.type === CFG.JOB.GATHER && Array.isArray(raw.nodeIds))
-      for (let i = 0; i < raw.nodeIds.length && nodeIds.length < CFG.GATHER.MAX_NODES_PER_AREA; i++) {
+      for (
+        let i = 0;
+        i < raw.nodeIds.length && nodeIds.length < CFG.GATHER.MAX_NODES_PER_AREA;
+        i++
+      ) {
         const id = intOr(raw.nodeIds[i], -1);
         if (id >= 0 && !nodeIds.includes(id)) nodeIds.push(id);
       }
@@ -298,7 +298,8 @@
       targetId: Math.max(0, intOr(raw.targetId, 0)),
       targetKind,
       resource:
-        raw.type === CFG.JOB.GATHER && (raw.resource === CFG.RESOURCE.WOOD || raw.resource === CFG.RESOURCE.METAL)
+        raw.type === CFG.JOB.GATHER &&
+        (raw.resource === CFG.RESOURCE.WOOD || raw.resource === CFG.RESOURCE.METAL)
           ? raw.resource
           : null,
       bounds:
