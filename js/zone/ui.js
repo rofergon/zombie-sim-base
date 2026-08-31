@@ -5,6 +5,12 @@
   const ZS = (window.ZS = window.ZS || {});
   const CFG = ZS.ZoneConfig;
   const R = CFG.RESOURCE;
+  const BUILDING_SCENE = Object.freeze({
+    COMMERCIAL: "assets/zone/scenes/abandoned-building.png",
+    RESIDENTIAL: "assets/zone/scenes/abandoned-residential.png",
+    INDUSTRIAL: "assets/zone/scenes/abandoned-industrial.png",
+    CIVIC: "assets/zone/scenes/abandoned-civic.png",
+  });
 
   const ROLE_LABEL = Object.freeze({
     [CFG.ROLE.WORKER]: "trabajador",
@@ -1339,14 +1345,29 @@
     }
 
     _setPortrait(element, member) {
-      const index = Math.abs((member.cid || 1) - 1) % 16,
+      const portrait = Math.abs((member.cid || 1) - 1) % 48,
+        pack = (portrait / 16) | 0,
+        index = portrait % 16,
         column = index % 4,
         row = (index / 4) | 0;
       element.className = "zone-portrait";
+      if (pack) element.classList.add("zone-portrait-pack-0" + (pack + 1));
       element.style.backgroundPosition =
         ((column / 3) * 100).toFixed(3) + "% " + ((row / 3) * 100).toFixed(3) + "%";
       element.setAttribute("role", "img");
       element.setAttribute("aria-label", "Retrato de " + (member.name || "habitante"));
+    }
+
+    _buildingScene(record) {
+      const area = record.area / 100,
+        poi = record.poi;
+      if (poi === CFG.POI.LIBRARY || poi === CFG.POI.POLICE || area >= 420)
+        return BUILDING_SCENE.CIVIC;
+      if (poi === CFG.POI.WAREHOUSE || poi === CFG.POI.WORKSHOP || area >= 240)
+        return BUILDING_SCENE.INDUSTRIAL;
+      if (poi === CFG.POI.RESIDENCE || poi === CFG.POI.PHARMACY || area < 120)
+        return BUILDING_SCENE.RESIDENTIAL;
+      return BUILDING_SCENE.COMMERCIAL;
     }
 
     _renderBuildingVisual(record, map) {
@@ -1371,7 +1392,7 @@
           : record.revealed && capacity
             ? Math.round(((capacity - total) / capacity) * 100)
             : 0;
-      image.src = "assets/zone/scenes/abandoned-building.png";
+      image.src = this._buildingScene(record);
       image.alt = "Fachada dibujada de un edificio urbano abandonado";
       image.decoding = "async";
       badge.textContent = record.revealed ? record.poiLabel : "ABANDONADO · SIN EXPLORAR";

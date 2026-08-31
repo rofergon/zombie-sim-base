@@ -556,6 +556,14 @@ body {
   box-shadow: inset 0 0 8px rgba(61, 52, 43, 0.12);
 }
 
+.zone-portrait.zone-portrait-pack-02 {
+  background-image: url("../assets/zone/portraits/survivors-atlas-02.png");
+}
+
+.zone-portrait.zone-portrait-pack-03 {
+  background-image: url("../assets/zone/portraits/survivors-atlas-03.png");
+}
+
 .zone-citizen-portrait-card {
   display: grid;
   grid-template-columns: 62px 1fr;
