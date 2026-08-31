@@ -959,7 +959,7 @@
           '" ' +
           (fertilizationUnlocked && field.hp > 0 ? "" : "disabled") +
           ">" +
-          (field.fertilized ? "con fertilizante 7×" : "sin fertilizante 4×") +
+          (field.fertilized ? "con fertilizante · 7 grano" : "sin fertilizante · 4 grano") +
           "</button></footer></article>";
       }
       if (!agriculture.fields.length)

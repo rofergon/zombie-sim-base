@@ -138,14 +138,20 @@
       if (!this.map.reachable(record)) return null;
       const current = this.forBuilding(buildingId);
       if (current) return current;
+      const research = record.use === CFG.BUILDING_USE.RESEARCH;
       const job = {
         id: this.state.zone.nextJobId++,
-        type: CFG.JOB.PRODUCE,
+        type: research ? CFG.JOB.RESEARCH : CFG.JOB.PRODUCE,
         targetId: buildingId,
         targetKind: "building",
         priority: CFG.PRIORITY.NORMAL,
         capacity: this.adaptations
-          ? this.adaptations.productionCapacity(record)
+          ? research
+            ? Math.min(
+                CFG.RESEARCH.DEFAULT_STAFF,
+                this.adaptations.researchCapacity(record),
+              )
+            : this.adaptations.productionCapacity(record)
           : CFG.TASK.PRODUCE_CAPACITY,
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
@@ -211,6 +217,24 @@
       if (!job || job.state !== CFG.JOB_STATE.ACTIVE) return false;
       job.priority = Math.max(CFG.PRIORITY.OFF, Math.min(CFG.PRIORITY.HIGH, priority | 0));
       this._releaseIdleAssignments();
+      this.markDirty();
+      this.reconcile();
+      if (this.onChanged) this.onChanged();
+      return true;
+    }
+
+    setCapacity(id, capacity) {
+      const job = this.at(id);
+      if (!job || job.state !== CFG.JOB_STATE.ACTIVE) return false;
+      const next = Math.max(1, Math.min(12, capacity | 0));
+      if (next === job.capacity) return false;
+      job.capacity = next;
+      while (job.assigned.length > job.capacity) {
+        const worker = this.citizens.at(job.assigned.pop());
+        if (!worker || worker.jobId !== job.id) continue;
+        worker.jobId = null;
+        worker.workerState = this.citizens.carryTotal(worker) ? WS.RETURNING : WS.IDLE;
+      }
       this.markDirty();
       this.reconcile();
       if (this.onChanged) this.onChanged();
@@ -428,6 +452,14 @@
       if (job.type === CFG.JOB.BUILD) {
         job.progress += dt;
         if (job.progress >= CFG.TASK.BUILD_SECONDS) this._complete(job);
+        return;
+      }
+      if (job.type === CFG.JOB.RESEARCH) {
+        const record = this._target(job);
+        worker.wantMove = false;
+        worker.vx *= Math.max(0, 1 - dt * 6);
+        worker.vy *= Math.max(0, 1 - dt * 6);
+        if (this.adaptations) this.adaptations.workResearch(record, dt);
         return;
       }
       if (job.type === CFG.JOB.PRODUCE) {

@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v11. */
+   shapes are discarded at this storage boundary so gameplay only sees v12. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -35,9 +35,14 @@
       regions: [],
       expedition: null,
       tech: Array.from({ length: CFG.TECH.COUNT }, () => false),
+      research: defaultResearch(),
       defense: defaultDefense(),
       campaign: defaultCampaign(),
     };
+  }
+
+  function defaultResearch() {
+    return { current: 0, progress: 0, materialProgress: 0 };
   }
 
   function defaultCampaign() {
@@ -196,6 +201,12 @@
     return { v: 11, world: data.world, clock: data.clock, zone };
   }
 
+  function migrateV11(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.research = defaultResearch();
+    return { v: 12, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
@@ -247,7 +258,7 @@
       !raw ||
       !Number.isInteger(raw.id) ||
       raw.id < 1 ||
-      (raw.type !== CFG.JOB.SALVAGE && raw.type !== CFG.JOB.BUILD && raw.type !== CFG.JOB.PRODUCE)
+      ![CFG.JOB.SALVAGE, CFG.JOB.BUILD, CFG.JOB.PRODUCE, CFG.JOB.RESEARCH].includes(raw.type)
     )
       return null;
     const assigned = [];
@@ -490,6 +501,22 @@
     return clean;
   }
 
+  function normalizeResearch(raw, tech) {
+    const clean = defaultResearch();
+    if (!raw || typeof raw !== "object") return clean;
+    const current = intOr(raw.current, 0);
+    if (current > 0 && current < CFG.TECH.COUNT && !tech[current]) {
+      clean.current = current;
+      clean.progress = clamp(numberOr(raw.progress, 0), 0, CFG.RESEARCH.WORK[current]);
+    }
+    clean.materialProgress = clamp(
+      numberOr(raw.materialProgress, 0),
+      0,
+      CFG.RESEARCH.SCIENCE_SECONDS,
+    );
+    return clean;
+  }
+
   function normalize(data) {
     const clean = defaultData();
     if (!data || data.v !== CFG.SAVE_VERSION) return clean;
@@ -531,6 +558,7 @@
     zone.tech = Array.from({ length: CFG.TECH.COUNT }, (_, id) =>
       Boolean(source.tech && source.tech[id]),
     );
+    zone.research = normalizeResearch(source.research, zone.tech);
     zone.defense = normalizeDefense(source.defense);
     zone.campaign = normalizeCampaign(source.campaign);
     const citizenIds = [],
@@ -641,6 +669,7 @@
       if (data.v === 8) data = migrateV8(data);
       if (data.v === 9) data = migrateV9(data);
       if (data.v === 10) data = migrateV10(data);
+      if (data.v === 11) data = migrateV11(data);
       return normalize(data);
     }
 
@@ -674,6 +703,10 @@
 
     static migrateV10(data) {
       return migrateV10(data);
+    }
+
+    static migrateV11(data) {
+      return migrateV11(data);
     }
 
     static normalize(data) {

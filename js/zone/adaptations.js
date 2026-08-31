@@ -24,16 +24,18 @@
       this.citizens = null;
       this.tasks = null;
       this.onChanged = null;
+      this.onResearchComplete = null;
       this.power = { capacity: 1, demand: 0, used: 0 };
       this.updateT = 0;
       this.medT = 0;
       this.overcrowded = false;
     }
 
-    connect(citizens, tasks, onChanged) {
+    connect(citizens, tasks, onChanged, onResearchComplete) {
       this.citizens = citizens;
       this.tasks = tasks;
       this.onChanged = onChanged;
+      this.onResearchComplete = onResearchComplete || null;
       this.recalculatePower();
       this.ensureProductionJobs();
     }
@@ -82,27 +84,96 @@
       for (let i = 0; i < this.map.records.length; i++) {
         const record = this.map.records[i];
         if (
-          [U.COOKHOUSE, U.WORKSHOP, U.FARM, U.BARN].includes(record.use) &&
+          [U.COOKHOUSE, U.WORKSHOP, U.RESEARCH, U.FARM, U.BARN].includes(record.use) &&
           !this.tasks.forBuilding(record.id)
         )
           this.tasks.postProduction(record.id);
         const job = this.tasks.forBuilding(record.id);
-        if (job && job.type === CFG.JOB.PRODUCE) job.capacity = this.productionCapacity(record);
+        if (job && job.type === CFG.JOB.RESEARCH)
+          job.capacity = Math.min(job.capacity, this.researchCapacity(record));
+        else if (job && job.type === CFG.JOB.PRODUCE)
+          job.capacity = this.productionCapacity(record);
       }
     }
 
     research(tech) {
-      if (!Number.isInteger(tech) || tech <= 0 || tech >= T.COUNT) return false;
-      if (this.state.zone.tech[tech] || this.map.countUse(U.RESEARCH) <= 0) return false;
+      this.recalculatePower();
+      if (this.researchBlockReason(tech)) return false;
+      const cost = CFG.RESEARCH.COSTS[tech];
+      this.state.stock[R.SCIENCE] -= cost;
+      this.state.zone.research.current = tech;
+      this.state.zone.research.progress = 0;
+      if (this.onChanged) this.onChanged();
+      return true;
+    }
+
+    researchBlockReason(tech) {
+      if (!Number.isInteger(tech) || tech <= 0 || tech >= T.COUNT)
+        return "Proyecto de investigación inválido.";
+      if (this.state.zone.tech[tech]) return "Esta tecnología ya fue investigada.";
+      const current = this.state.zone.research.current;
+      if (current)
+        return current === tech
+          ? "Esta tecnología ya está en curso."
+          : "Termina la investigación actual antes de iniciar otra.";
       if (
         [T.FERTILIZATION, T.GREENHOUSES, T.EFFICIENT_COOKING].includes(tech) &&
         !this.state.zone.tech[T.AGRICULTURE]
       )
+        return "Primero investiga Agricultura.";
+      let centers = 0,
+        operational = 0,
+        assigned = 0;
+      for (let i = 0; i < this.map.records.length; i++) {
+        const record = this.map.records[i];
+        if (record.use !== U.RESEARCH) continue;
+        centers++;
+        if (!record.active || !record.powered || record.hp <= 0) continue;
+        operational++;
+        const job = this.tasks && this.tasks.forBuilding(record.id);
+        if (job && job.type === CFG.JOB.RESEARCH && job.priority !== CFG.PRIORITY.OFF)
+          assigned += job.assigned.length;
+      }
+      if (!centers) return "Adapta primero un centro de investigación.";
+      if (!operational) return "Hace falta un centro activo, intacto y con energía.";
+      if (!assigned) return "Asigna al menos un habitante al centro de investigación.";
+      if (this.state.stock[R.SCIENCE] < CFG.RESEARCH.COSTS[tech])
+        return "No hay suficientes materiales de ciencia.";
+      return "";
+    }
+
+    workResearch(record, dt) {
+      if (
+        !record ||
+        record.use !== U.RESEARCH ||
+        !record.active ||
+        !record.powered ||
+        record.hp <= 0 ||
+        dt <= 0
+      )
         return false;
-      const cost = CFG.RESEARCH.COSTS[tech];
-      if (this.state.stock[R.SCIENCE] < cost) return false;
-      this.state.stock[R.SCIENCE] -= cost;
+      const research = this.state.zone.research,
+        tech = research.current;
+      if (tech) {
+        research.progress += dt;
+        if (research.progress >= CFG.RESEARCH.WORK[tech]) this._completeResearch(tech);
+        return true;
+      }
+      research.materialProgress += dt;
+      if (research.materialProgress >= CFG.RESEARCH.SCIENCE_SECONDS) {
+        const produced = Math.floor(research.materialProgress / CFG.RESEARCH.SCIENCE_SECONDS);
+        research.materialProgress -= produced * CFG.RESEARCH.SCIENCE_SECONDS;
+        this.state.stock[R.SCIENCE] += produced;
+        if (this.onChanged) this.onChanged();
+      }
+      return true;
+    }
+
+    _completeResearch(tech) {
+      const research = this.state.zone.research;
       this.state.zone.tech[tech] = true;
+      research.current = 0;
+      research.progress = 0;
       if (tech === T.FORTIFICATIONS)
         for (let i = 0; i < this.map.records.length; i++) {
           const record = this.map.records[i];
@@ -112,7 +183,93 @@
           record.hp += record.maxHP - oldMax;
         }
       if (this.onChanged) this.onChanged();
-      return true;
+      if (this.onResearchComplete) this.onResearchComplete(tech);
+    }
+
+    researchCapacity(record) {
+      if (!record) return 1;
+      return Math.max(
+        1,
+        Math.min(CFG.RESEARCH.MAX_STAFF, Math.round(record.area / CFG.RESEARCH.AREA_PER_STAFF)),
+      );
+    }
+
+    setResearchStaff(buildingId, delta) {
+      const record = this.map.at(buildingId),
+        job = record && this.tasks.forBuilding(record.id);
+      if (!record || record.use !== U.RESEARCH || !job || job.type !== CFG.JOB.RESEARCH)
+        return false;
+      const max = this.researchCapacity(record);
+      if (delta < 0) {
+        if (job.priority === CFG.PRIORITY.OFF) return false;
+        if (job.capacity <= 1) return this.tasks.setPriority(job.id, CFG.PRIORITY.OFF);
+        return this.tasks.setCapacity(job.id, job.capacity - 1);
+      }
+      if (delta > 0) {
+        if (job.priority === CFG.PRIORITY.OFF)
+          return this.tasks.setPriority(job.id, CFG.PRIORITY.NORMAL);
+        if (job.capacity >= max) return false;
+        return this.tasks.setCapacity(job.id, job.capacity + 1);
+      }
+      return false;
+    }
+
+    _workingResearchers(job) {
+      if (!job || !this.citizens) return 0;
+      let working = 0;
+      for (let i = 0; i < job.assigned.length; i++) {
+        const worker = this.citizens.at(job.assigned[i]);
+        if (
+          worker &&
+          !worker.dead &&
+          worker.jobId === job.id &&
+          worker.workerState === CFG.WORKER_STATE.WORKING
+        )
+          working++;
+      }
+      return working;
+    }
+
+    researchModel() {
+      const centers = [];
+      let assigned = 0,
+        working = 0,
+        maxStaff = 0;
+      for (let i = 0; i < this.map.records.length; i++) {
+        const record = this.map.records[i];
+        if (record.use !== U.RESEARCH) continue;
+        const job = this.tasks && this.tasks.forBuilding(record.id),
+          centerAssigned = job ? job.assigned.length : 0,
+          operational = record.active && record.powered && record.hp > 0,
+          centerWorking = operational ? this._workingResearchers(job) : 0,
+          centerMax = this.researchCapacity(record);
+        assigned += centerAssigned;
+        working += centerWorking;
+        maxStaff += centerMax;
+        centers.push({
+          id: record.id,
+          active: record.active,
+          powered: Boolean(record.powered),
+          hp: record.hp,
+          assigned: centerAssigned,
+          working: centerWorking,
+          capacity: job && job.priority !== CFG.PRIORITY.OFF ? job.capacity : 0,
+          max: centerMax,
+        });
+      }
+      const research = this.state.zone.research,
+        work = research.current ? CFG.RESEARCH.WORK[research.current] : 0;
+      return {
+        current: research.current,
+        progress: research.progress,
+        work,
+        materialProgress: research.materialProgress,
+        assigned,
+        working,
+        maxStaff,
+        centers,
+        controller: this,
+      };
     }
 
     setRecipe(record, recipe) {
@@ -138,7 +295,7 @@
       if (!record || record.use === U.ABANDONED || record === this.map.hq) return false;
       record.active = !record.active;
       const job = this.tasks.forBuilding(record.id);
-      if (job && job.type === CFG.JOB.PRODUCE)
+      if (job && (job.type === CFG.JOB.PRODUCE || job.type === CFG.JOB.RESEARCH))
         this.tasks.setPriority(job.id, record.active ? CFG.PRIORITY.NORMAL : CFG.PRIORITY.OFF);
       this.recalculatePower();
       if (this.onChanged) this.onChanged();

@@ -26,6 +26,7 @@
     HAUL: 4,
     PRODUCE: 5,
     SALVAGE: 6,
+    RESEARCH: 7,
   });
 
   const ROLE = Object.freeze({
@@ -112,7 +113,7 @@
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 11,
+    SAVE_VERSION: 12,
     RESOURCE,
     JOB,
     ROLE,
@@ -259,6 +260,11 @@
     }),
     RESEARCH: Object.freeze({
       COSTS: Object.freeze([0, 8, 10, 12, 8, 6, 12, 8]),
+      WORK: Object.freeze([0, 192, 240, 288, 192, 144, 288, 192]),
+      DEFAULT_STAFF: 3,
+      MAX_STAFF: 12,
+      AREA_PER_STAFF: 5000,
+      SCIENCE_SECONDS: 180,
     }),
     AGRICULTURE: Object.freeze({
       GRID: 40,
