@@ -69,6 +69,7 @@
   const RESOURCE_ORDER = Object.freeze([
     R.AMMO,
     R.MEDICINE,
+    R.FUEL,
     R.FOOD,
     R.WOOD,
     R.METAL,
@@ -133,9 +134,9 @@
       squad.spareWeapons.length = W.COUNT;
     }
 
-    applyAgentWeapon(agent, weapon) {
+    applyAgentWeapon(agent, weapon, persist) {
       const def = this.definition(weapon);
-      agent.weapon = def.id;
+      if (persist !== false) agent.weapon = def.id;
       agent.gun = def.id !== W.MACHETE;
       agent.wep = def.visual;
     }
@@ -254,9 +255,7 @@
       let hasContents = weapon !== W.MACHETE;
       if (lastMember)
         hasContents =
-          hasContents ||
-          resourceTotal(squad.inventory) > 0 ||
-          weaponTotal(squad.spareWeapons) > 0;
+          hasContents || resourceTotal(squad.inventory) > 0 || weaponTotal(squad.spareWeapons) > 0;
       if (!hasContents) return null;
       const drop = this._dropNear(agent.x, agent.y) || this._createDrop(agent.x, agent.y);
       if (weapon !== W.MACHETE) drop.weapons[weapon]++;
@@ -328,10 +327,7 @@
         }
       for (let i = 0; i < RESOURCE_ORDER.length; i++) {
         const resource = RESOURCE_ORDER[i];
-        while (
-          drop.resources[resource] > 0 &&
-          this.squads.inventoryTotal(squad) < squad.capacity
-        ) {
+        while (drop.resources[resource] > 0 && this.squads.inventoryTotal(squad) < squad.capacity) {
           drop.resources[resource]--;
           squad.inventory[resource]++;
           takenResources++;
@@ -394,7 +390,8 @@
     }
 
     _drawWeapon(c, weapon, x, y, seed) {
-      const length = weapon === W.PISTOL ? 13 : weapon === W.SHOTGUN ? 24 : weapon === W.SNIPER ? 27 : 22;
+      const length =
+        weapon === W.PISTOL ? 13 : weapon === W.SHOTGUN ? 24 : weapon === W.SNIPER ? 27 : 22;
       c.save();
       c.translate(x, y);
       c.rotate((ZS.hash(seed) - 0.5) * 0.55);

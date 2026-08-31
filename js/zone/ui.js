@@ -63,6 +63,7 @@
     "grano",
     "carne",
     "fertilizante",
+    "combustible",
   ]);
   const RESOURCE_ICON = Object.freeze([
     "zi-food",
@@ -75,6 +76,7 @@
     "zi-grain",
     "zi-meat",
     "zi-fertilizer",
+    "zi-power",
   ]);
   const USE_LABEL = Object.freeze({
     [CFG.BUILDING_USE.SHELTER]: "refugio",
@@ -568,6 +570,15 @@
         else if (campaignLaw && this.callbacks)
           this.callbacks.campaignLaw(Number(campaignLaw.dataset.campaignLaw));
       });
+      this.root.addEventListener("change", (event) => {
+        const equip = event.target.closest("[data-equip-weapon]");
+        if (equip && this.callbacks && this.callbacks.equipWeapon)
+          this.callbacks.equipWeapon(
+            Number(equip.dataset.equipSquad),
+            Number(equip.dataset.equipWeapon),
+            Number(equip.value),
+          );
+      });
     }
 
     connect(callbacks) {
@@ -788,6 +799,10 @@
             citizen.weapon,
             citizen.name,
             citizen.arrivalDay,
+            Math.round(citizen.infection),
+            citizen.skills,
+            citizen.trait,
+            citizen.away,
           ]),
         ];
       else if (name === "research")
@@ -853,7 +868,15 @@
           model.defense.warning,
         ];
       else if (name === "expedition")
-        signatureData = [name, model.regions, model.stock[R.FOOD], model.stock[R.AMMO]];
+        signatureData = [
+          name,
+          model.regions,
+          model.vehicles,
+          model.threats,
+          model.stock[R.FOOD],
+          model.stock[R.AMMO],
+          model.stock[R.FUEL],
+        ];
       else if (name === "radio" || name === "laws") signatureData = [name, model.campaign];
       const signature = JSON.stringify(signatureData);
       if (signature === this.systemSignature) return;
@@ -1005,6 +1028,8 @@
         "</b> libres</span><span><b>" +
         model.stats.assigned +
         "</b> asignados</span><span><b>" +
+        model.stats.infected +
+        "</b> expuestos</span><span><b>" +
         Math.round(model.stats.moral) +
         '%</b> moral</span></div><h3 class="zone-system-subtitle">GESTIÓN DE TRABAJADORES</h3>' +
         '<p class="zone-labor-help">El sistema cubre primero la prioridad máxima. Si faltan habitantes, reasigna automáticamente desde tareas inferiores. MAX deja trabajar a todos los disponibles.</p>' +
@@ -1070,7 +1095,20 @@
         const citizen = model.citizens[i],
           role =
             citizen.squadId === null ? ROLE_LABEL[citizen.role] : "patrulla " + citizen.squadId,
-          state = citizen.squadId === null ? WORK_LABEL[citizen.workerState] : "en servicio";
+          state = citizen.away
+            ? "en expedición"
+            : citizen.squadId === null
+              ? WORK_LABEL[citizen.workerState]
+              : "en servicio",
+          skill = Math.max(...citizen.skills),
+          specialty =
+            skill <= 0
+              ? "sin especialidad"
+              : citizen.skills[CFG.SKILL.COMBAT] === skill
+                ? "combate " + skill
+                : citizen.skills[CFG.SKILL.SCAVENGE] === skill
+                  ? "saqueo " + skill
+                  : "logística " + skill;
         html +=
           '<button type="button" data-focus-citizen="' +
           citizen.id +
@@ -1080,6 +1118,8 @@
           role +
           " · " +
           state +
+          " · " +
+          specialty +
           " · llegó día " +
           citizen.arrivalDay +
           '</small></span><span class="zone-citizen-vitals"><i><em style="width:' +
@@ -1088,6 +1128,8 @@
           Math.ceil(citizen.hp) +
           " · hambre " +
           Math.round(citizen.hunger) +
+          "% · exposición " +
+          Math.round(citizen.infection) +
           "%</small></span></button>";
       }
       this.systemBody.innerHTML = html + "</div>";
@@ -1466,8 +1508,50 @@
       if (expedition)
         html +=
           '<div class="zone-defense-warning"><b>EXPEDICIÓN EN RUTA</b><span>' +
+          "Patrulla " +
+          expedition.squadId +
+          (expedition.vehicleId === null ? " · a pie · " : " · motorizada · ") +
           Math.ceil(expedition.remaining) +
           " min restantes</span></div>";
+      html +=
+        '<div class="zone-system-stats"><span><b>' +
+        (region.readySquadId === null ? "—" : region.readySquadId) +
+        "</b> patrulla lista</span><span><b>" +
+        model.vehicles.recovered +
+        "/" +
+        model.vehicles.list.length +
+        "</b> vehículos</span><span><b>" +
+        model.stock[R.FUEL] +
+        "</b> combustible</span><span><b>" +
+        (model.threats.lairs + model.threats.raiders) +
+        "</b> focos activos</span></div>";
+      html += '<div class="zone-economy-list">';
+      for (let i = 0; i < model.vehicles.list.length; i++) {
+        const vehicle = model.vehicles.list[i],
+          label =
+            vehicle.kind === CFG.VEHICLE.TRUCK
+              ? "camión"
+              : vehicle.kind === CFG.VEHICLE.VAN
+                ? "furgoneta"
+                : "automóvil";
+        html +=
+          '<div><span class="zone-icon zi-expedition"></span><span><b>' +
+          label +
+          " " +
+          vehicle.id +
+          "</b><small>" +
+          (vehicle.recovered
+            ? vehicle.squadId === null
+              ? "recuperado"
+              : "patrulla " + vehicle.squadId
+            : "abandonado en el mapa") +
+          " · estado " +
+          Math.round((vehicle.hp / vehicle.maxHP) * 100) +
+          "%</small></span><strong>" +
+          vehicle.fuel.toFixed(1) +
+          " ⛽</strong></div>";
+      }
+      html += "</div>";
       html +=
         '<p class="zone-system-lead">Los sectores centrales se simulan completos. Los exteriores se exploran como rutas regionales conectadas.</p><div class="zone-region-grid">';
       let minX = Infinity,
@@ -1505,7 +1589,7 @@
           "</small></button>";
       }
       html +=
-        '</div><p class="zone-expedition-cost">Explorar: 1 patrulla · 6 comida · 2 munición · 3 horas</p>' +
+        '</div><p class="zone-expedition-cost">Explorar: patrulla presente en el CG · 6 comida · 2 munición · a pie 3 h; un vehículo con 2 de combustible reduce el viaje y amplía la carga.</p>' +
         (model.mapPackAvailable
           ? '<button type="button" class="zone-export-map" data-export-map>Exportar MapPack para uso offline</button>'
           : "");
@@ -1905,9 +1989,13 @@
     }
 
     _weaponLabel(weapon) {
-      if (weapon === CFG.WEAPON.RIFLE) return "rifle";
-      if (weapon === CFG.WEAPON.PISTOL) return "pistola";
-      return "machete";
+      const definition = ZS.ZoneWeaponDefs && ZS.ZoneWeaponDefs[weapon];
+      return definition ? definition.label : "machete";
+    }
+
+    _weaponIconClass(weapon) {
+      const definition = ZS.ZoneWeaponDefs && ZS.ZoneWeaponDefs[weapon];
+      return "zone-weapon-icon " + (definition ? definition.icon : "zw-machete");
     }
 
     _setPortrait(element, member) {
@@ -1988,11 +2076,11 @@
         for (let i = 0; i < R.COUNT; i++)
           if (record.loot[i] > 0)
             this._appendResourceSlot(slots, RESOURCE_ICON[i], RESOURCE_LABEL[i], record.loot[i]);
-        for (let weapon = CFG.WEAPON.PISTOL; weapon <= CFG.WEAPON.RIFLE; weapon++)
+        for (let weapon = CFG.WEAPON.PISTOL; weapon <= CFG.WEAPON.SNIPER; weapon++)
           if (record.lootWeapons[weapon] > 0)
             this._appendResourceSlot(
               slots,
-              "zi-ammo",
+              this._weaponIconClass(weapon),
               this._weaponLabel(weapon),
               record.lootWeapons[weapon],
             );
@@ -2039,7 +2127,7 @@
       return Math.min(100, Math.round((job.progress / CFG.TASK.SALVAGE_SECONDS) * 100));
     }
 
-    showAgents(selected, selectedSquads, pending, citizens, squads) {
+    showAgents(selected, selectedSquads, pending, citizens, squads, weapons) {
       this._hideActions();
       this._showSelection();
       this.home.textContent = "⌂ centrar en la base";
@@ -2055,7 +2143,8 @@
           capacity = 0,
           ammo = 0,
           medicine = 0,
-          inventory = Array.from({ length: R.COUNT }, () => 0);
+          inventory = Array.from({ length: R.COUNT }, () => 0),
+          spareWeapons = Array.from({ length: CFG.WEAPON.COUNT }, () => 0);
         for (let i = 0; i < selectedSquads.length; i++) {
           const squad = selectedSquads[i];
           members += squad.members.length;
@@ -2065,6 +2154,8 @@
           medicine += squad.inventory[R.MEDICINE];
           for (let resource = 0; resource < R.COUNT; resource++)
             inventory[resource] += squad.inventory[resource];
+          for (let weapon = CFG.WEAPON.PISTOL; weapon < CFG.WEAPON.COUNT; weapon++)
+            spareWeapons[weapon] += squad.spareWeapons[weapon] || 0;
         }
         this.title.textContent =
           selectedSquads.length === 1
@@ -2085,7 +2176,7 @@
           " · botiquines " +
           medicine +
           "\nRMB actuar · V saquear zona · Shift+RMB añade órdenes · Ctrl+1–9 grupos";
-        this._renderSquadVisual(inventory, cargo, capacity);
+        this._renderSquadVisual(inventory, spareWeapons, cargo, capacity);
         this.memberDetail.replaceChildren();
         this.memberDetail.hidden = false;
         for (let i = 0; i < selectedSquads.length; i++) {
@@ -2104,7 +2195,10 @@
               name = document.createElement("b"),
               state = document.createElement("small"),
               hp = document.createElement("i"),
-              fill = document.createElement("em");
+              fill = document.createElement("em"),
+              weaponControl = document.createElement("label"),
+              weaponIcon = document.createElement("span"),
+              weaponSelect = document.createElement("select");
             this._setPortrait(portrait, member);
             name.textContent = member.name || "Habitante " + member.cid;
             state.textContent =
@@ -2116,7 +2210,28 @@
             fill.style.width =
               Math.max(0, Math.min(100, (member.hp / member.maxHP) * 100)).toFixed(1) + "%";
             hp.appendChild(fill);
-            copy.append(name, hp, state);
+            weaponControl.className = "zone-weapon-control";
+            weaponIcon.className = this._weaponIconClass(member.weapon);
+            weaponSelect.dataset.equipSquad = squad.id;
+            weaponSelect.dataset.equipWeapon = member.cid;
+            weaponSelect.disabled = !weapons.canManage(squad);
+            weaponSelect.title = weaponSelect.disabled
+              ? "La patrulla debe estar dentro del CG para cambiar equipo"
+              : "Cambiar arma usando la armería del CG";
+            for (let weapon = CFG.WEAPON.MACHETE; weapon < CFG.WEAPON.COUNT; weapon++) {
+              const option = document.createElement("option"),
+                available = weapons.armory[weapon] || 0;
+              option.value = String(weapon);
+              option.selected = weapon === member.weapon;
+              option.disabled =
+                weapon !== member.weapon && weapon !== CFG.WEAPON.MACHETE && available <= 0;
+              option.textContent =
+                this._weaponLabel(weapon) +
+                (weapon === CFG.WEAPON.MACHETE ? " · reserva" : " · CG " + available);
+              weaponSelect.appendChild(option);
+            }
+            weaponControl.append(weaponIcon, weaponSelect);
+            copy.append(name, hp, weaponControl, state);
             card.append(portrait, copy);
             this.memberDetail.appendChild(card);
           }
@@ -2154,7 +2269,7 @@
       }
     }
 
-    _renderSquadVisual(inventory, cargo, capacity) {
+    _renderSquadVisual(inventory, spareWeapons, cargo, capacity) {
       const rack = document.createElement("section"),
         header = document.createElement("header"),
         label = document.createElement("small"),
@@ -2168,6 +2283,14 @@
       for (let i = 0; i < R.COUNT; i++)
         if (inventory[i] > 0)
           this._appendResourceSlot(slots, RESOURCE_ICON[i], RESOURCE_LABEL[i], inventory[i]);
+      for (let weapon = CFG.WEAPON.PISTOL; weapon < CFG.WEAPON.COUNT; weapon++)
+        if (spareWeapons[weapon] > 0)
+          this._appendResourceSlot(
+            slots,
+            this._weaponIconClass(weapon),
+            this._weaponLabel(weapon),
+            spareWeapons[weapon],
+          );
       if (!slots.childElementCount) {
         const empty = document.createElement("small");
         empty.className = "zone-resource-empty";

@@ -399,10 +399,12 @@
         loot[R.WOOD] = 8 + ((rng() * 16) | 0);
         loot[R.METAL] = 8 + ((rng() * 14) | 0);
         loot[R.BRICK] = 6 + ((rng() * 14) | 0);
+        loot[R.FUEL] = rng() > 0.45 ? 2 + ((rng() * 5) | 0) : 0;
       } else if (poi === P.WORKSHOP) {
         loot[R.WOOD] = 5 + ((rng() * 9) | 0);
         loot[R.METAL] = 10 + ((rng() * 15) | 0);
         loot[R.AMMO] = (rng() * 7) | 0;
+        loot[R.FUEL] = rng() > 0.58 ? 1 + ((rng() * 4) | 0) : 0;
         lootWeapons[CFG.WEAPON.SHOTGUN] = rng() > 0.82 ? 1 : 0;
       } else if (poi === P.LIBRARY) {
         loot[R.SCIENCE] = 8 + ((rng() * 16) | 0);
