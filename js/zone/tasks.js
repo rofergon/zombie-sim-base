@@ -23,6 +23,7 @@
       this.adaptations = null;
       this.agriculture = null;
       this.gathering = null;
+      this.logistics = null;
     }
 
     connect(citizens, onChanged) {
@@ -40,6 +41,10 @@
 
     connectGathering(gathering) {
       this.gathering = gathering;
+    }
+
+    connectLogistics(logistics) {
+      this.logistics = logistics;
     }
 
     markDirty() {
@@ -549,6 +554,7 @@
         if (
           worker &&
           !worker.dead &&
+          !worker.away &&
           worker.role === CFG.ROLE.WORKER &&
           worker.jobId === null &&
           this.citizens.carryTotal(worker) === 0
@@ -635,7 +641,7 @@
     }
 
     updateWorker(worker, dt, t, nav) {
-      if (worker.dead || worker.role !== CFG.ROLE.WORKER) return;
+      if (worker.dead || worker.away || worker.role !== CFG.ROLE.WORKER) return;
       const night = this.state.phase() === "dusk" || this.state.phase() === "night";
       if (night && worker.workerState !== WS.RETURNING && worker.workerState !== WS.RESTING)
         this.returnForNight(worker);
@@ -700,9 +706,12 @@
 
     _work(worker, job, dt) {
       if (!job) return;
+      const workDt =
+        dt * (this.citizens ? this.citizens.skillMultiplier(worker, CFG.SKILL.LABOR) : 1);
       this._workSound(worker, job, dt);
       if (job.type === CFG.JOB.BUILD) {
-        job.progress += dt;
+        job.progress += workDt;
+        if (this.citizens) this.citizens.addSkill(worker, CFG.SKILL.LABOR, workDt * 0.08);
         if (job.progress >= CFG.TASK.BUILD_SECONDS) this._complete(job);
         return;
       }
@@ -711,7 +720,8 @@
         worker.wantMove = false;
         worker.vx *= Math.max(0, 1 - dt * 6);
         worker.vy *= Math.max(0, 1 - dt * 6);
-        if (this.adaptations) this.adaptations.workResearch(record, dt);
+        if (this.adaptations) this.adaptations.workResearch(record, workDt);
+        if (this.citizens) this.citizens.addSkill(worker, CFG.SKILL.LABOR, workDt * 0.05);
         return;
       }
       if (job.type === CFG.JOB.PRODUCE) {
@@ -722,10 +732,11 @@
         worker.vx *= Math.max(0, 1 - dt * 6);
         worker.vy *= Math.max(0, 1 - dt * 6);
         if (!record || !controller || !controller.canProduce(record)) return;
-        job.progress += dt;
+        job.progress += workDt;
         if (job.progress >= seconds) {
           job.progress -= seconds;
           if (controller.produce(record) && this.onChanged) this.onChanged();
+          if (this.citizens) this.citizens.addSkill(worker, CFG.SKILL.LABOR, 0.6);
         }
         return;
       }
@@ -733,11 +744,12 @@
         worker.wantMove = false;
         worker.vx *= Math.max(0, 1 - dt * 6);
         worker.vy *= Math.max(0, 1 - dt * 6);
-        worker.workT += dt;
+        worker.workT += workDt;
         if (worker.workT < CFG.GATHER.WORK_SECONDS) return;
         worker.workT = 0;
-        const room = CFG.CITIZEN.CARRY_CAPACITY - this.citizens.carryTotal(worker),
+        const room = this.citizens.carryCapacity(worker) - this.citizens.carryTotal(worker),
           amount = this.gathering ? this.gathering.collect(job, worker, room) : 0;
+        if (amount) this.citizens.addSkill(worker, CFG.SKILL.LABOR, amount * 0.2);
         worker.workerState = amount ? WS.RETURNING : WS.TO_JOB;
         return;
       }
@@ -746,10 +758,10 @@
         worker.workerState = WS.RETURNING;
         return;
       }
-      job.progress += dt;
+      job.progress += workDt;
       if (job.progress < CFG.TASK.SALVAGE_SECONDS) return;
       job.progress -= CFG.TASK.SALVAGE_SECONDS;
-      let room = CFG.CITIZEN.CARRY_CAPACITY - this.citizens.carryTotal(worker);
+      let room = this.citizens.carryCapacity(worker) - this.citizens.carryTotal(worker);
       for (let i = 0; i < SALVAGE_IDS.length && room > 0; i++) {
         const id = SALVAGE_IDS[i],
           amount = Math.min(room, record.salvage[id]);
@@ -758,6 +770,7 @@
         room -= amount;
       }
       worker.workerState = WS.RETURNING;
+      this.citizens.addSkill(worker, CFG.SKILL.LABOR, 0.4);
       if (this.onChanged) this.onChanged();
     }
 
@@ -783,8 +796,10 @@
 
     _return(worker, job, dt, t, nav, night) {
       const hq = this.map.hq,
-        door = hq && hq.shape.door,
-        target = door ? door.inner : hq;
+        carrying = this.citizens.carryTotal(worker) > 0,
+        destination = this.logistics ? this.logistics.target(worker, night && !carrying) : hq,
+        door = destination && destination.shape.door,
+        target = door ? door.inner : destination;
       if (!target) return;
       worker.workTarget.x = target.x === undefined ? target.cx : target.x;
       worker.workTarget.y = target.y === undefined ? target.cy : target.y;
@@ -797,12 +812,24 @@
         t,
         nav,
       );
-      if (result !== "arrived" && worker.bld !== hq.id) return;
-      for (let i = 0; i < R.COUNT; i++) {
-        this.state.stock[i] += worker.carry[i];
-        worker.carry[i] = 0;
+      if (result !== "arrived" && worker.bld !== destination.id) return;
+      if (this.logistics) this.logistics.depositCargo(worker.carry);
+      else
+        for (let i = 0; i < R.COUNT; i++) {
+          this.state.stock[i] += worker.carry[i];
+          worker.carry[i] = 0;
+        }
+      if (this.citizens.carryTotal(worker) > 0) {
+        worker.workerState = WS.RETURNING;
+        worker.workTarget.x = target.x === undefined ? target.cx : target.x;
+        worker.workTarget.y = target.y === undefined ? target.cy : target.y;
+        worker.vx = worker.vy = 0;
+        if (this.onChanged) this.onChanged();
+        return;
       }
-      if (night) worker.workerState = WS.RESTING;
+      if (this.logistics) this.logistics.clearTarget(worker);
+      if (night && destination !== hq) worker.workerState = WS.RETURNING;
+      else if (night) worker.workerState = WS.RESTING;
       else if (
         job &&
         job.state === CFG.JOB_STATE.ACTIVE &&

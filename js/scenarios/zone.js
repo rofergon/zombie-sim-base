@@ -83,6 +83,7 @@
         append: false,
       };
       this.saveT = 0;
+      this.saveWarningShown = false;
       this.clockStamp = -1;
       this.uiT = 0;
       this.uiDirty = true;
@@ -316,7 +317,15 @@
       this.saveT += dt;
       if (this.saveT >= 10) {
         this.saveT = 0;
-        this.state.save();
+        const saved = this.state.save();
+        if (!saved && !this.saveWarningShown) {
+          this.saveWarningShown = true;
+          this.ui.toast(
+            "No se pudo guardar la campaña (" +
+              (this.state.lastSaveError || "almacenamiento lleno") +
+              "). Exporta el MapPack y libera espacio del navegador.",
+          );
+        } else if (saved) this.saveWarningShown = false;
       }
       this._refreshClock(false);
     }
