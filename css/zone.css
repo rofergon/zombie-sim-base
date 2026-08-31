@@ -811,6 +811,16 @@ body {
 .zi-food {
   background-image: url("../assets/zone/icons/food.png");
 }
+.zi-grain,
+.zi-meat {
+  background-image: url("../assets/zone/icons/food.png");
+}
+.zi-fertilizer {
+  background-image: url("../assets/zone/icons/production.png");
+}
+.zi-weather {
+  background-image: url("../assets/zone/icons/power.png");
+}
 .zi-wood {
   background-image: url("../assets/zone/icons/wood.png");
 }
@@ -1430,6 +1440,145 @@ body {
 .zone-system-adapt-command button .zone-icon {
   width: 27px;
   height: 27px;
+}
+
+.zone-weather-card,
+.zone-food-chain,
+.zone-agriculture-row {
+  border: 1px solid rgba(61, 52, 43, 0.17);
+  border-radius: 4px;
+  background: rgba(255, 252, 241, 0.52);
+}
+
+.zone-weather-card {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-items: center;
+  gap: 7px;
+  padding: 7px;
+}
+
+.zone-weather-card > span:last-child,
+.zone-food-chain,
+.zone-agriculture-row header span:last-child {
+  display: grid;
+}
+
+.zone-weather-card b,
+.zone-food-chain b,
+.zone-agriculture-row b {
+  font-size: 10px;
+}
+
+.zone-weather-card small,
+.zone-food-chain span,
+.zone-agriculture-row small {
+  font-size: 8px;
+  line-height: 1.35;
+  opacity: 0.66;
+}
+
+.zone-food-chain {
+  gap: 2px;
+  margin-top: 5px;
+  padding: 7px 9px;
+}
+
+.zone-food-chain b,
+.zone-system-subtitle {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.zone-field-builders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+#zone-ui .zone-field-builders button {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  align-items: center;
+  gap: 5px;
+  padding: 5px;
+  text-align: left;
+}
+
+.zone-field-builders button > span:last-child {
+  display: grid;
+}
+
+.zone-field-builders b {
+  font-size: 9px;
+}
+
+.zone-field-builders small {
+  font-size: 7px;
+  opacity: 0.63;
+}
+
+.zone-system-subtitle {
+  margin: 11px 0 5px;
+  font-size: 9px;
+  opacity: 0.63;
+}
+
+.zone-agriculture-list {
+  display: grid;
+  gap: 5px;
+}
+
+.zone-agriculture-row {
+  padding: 6px;
+}
+
+.zone-agriculture-row header {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+#zone-ui .zone-agriculture-row header button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.zone-agriculture-row > i {
+  display: block;
+  height: 4px;
+  margin: 6px 0;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgba(61, 52, 43, 0.12);
+}
+
+.zone-agriculture-row > i em {
+  display: block;
+  height: 100%;
+  background: rgba(79, 105, 55, 0.75);
+}
+
+.zone-agriculture-row footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+#zone-ui .zone-agriculture-row footer button {
+  padding: 3px 6px;
+  font-size: 8px;
+}
+
+.zone-system-empty {
+  margin: 5px 0;
+  padding: 7px;
+  font-size: 9px;
+  text-align: center;
+  opacity: 0.55;
 }
 
 .zone-system-stats {

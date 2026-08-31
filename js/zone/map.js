@@ -19,8 +19,9 @@
     [USE.RESEARCH]: "centro de investigación",
     [USE.MEDBAY]: "enfermería",
     [USE.SQUAD_QUARTERS]: "cuartel de escuadra",
-    [USE.FARM]: "granja en azotea",
+    [USE.FARM]: "invernadero",
     [USE.POWER]: "generador",
+    [USE.BARN]: "granero",
   });
 
   const POI_LABEL = Object.freeze({
@@ -323,6 +324,8 @@
             active: saved ? saved.active : true,
             powered: false,
             productionT: saved ? saved.productionT : 0,
+            recipe: saved ? saved.recipe : CFG.RECIPE.MEAT,
+            fertilized: saved ? saved.fertilized : false,
           };
         record.lootCapacity = Math.max(
           record.lootCapacity,
@@ -550,6 +553,8 @@
           maxHP: record.maxHP,
           active: record.active,
           productionT: record.productionT,
+          recipe: record.recipe,
+          fertilized: record.fertilized,
         });
       }
       this.state.zone.buildings = out;

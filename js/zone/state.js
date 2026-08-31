@@ -1,5 +1,5 @@
 /* Versioned campaign state for ScenarioZone. Migrations are pure; all old
-   shapes are discarded at this storage boundary so gameplay only sees v10. */
+   shapes are discarded at this storage boundary so gameplay only sees v11. */
 (() => {
   "use strict";
   const ZS = (window.ZS = window.ZS || {});
@@ -29,6 +29,8 @@
       squads: [],
       nextFortificationId: 1,
       fortifications: [],
+      nextFieldId: 1,
+      fields: [],
       buildings: [],
       regions: [],
       expedition: null,
@@ -187,6 +189,13 @@
     return { v: 10, world: data.world, clock: data.clock, zone };
   }
 
+  function migrateV10(data) {
+    const zone = Object.assign(defaultZone(), data.zone || {});
+    zone.nextFieldId = 1;
+    zone.fields = [];
+    return { v: 11, world: data.world, clock: data.clock, zone };
+  }
+
   function normalizeOrder(raw) {
     if (
       !raw ||
@@ -250,6 +259,7 @@
       id: raw.id,
       type: raw.type,
       targetId: Math.max(0, intOr(raw.targetId, 0)),
+      targetKind: raw.targetKind === "field" ? "field" : "building",
       priority: clamp(
         intOr(raw.priority, CFG.PRIORITY.NORMAL),
         CFG.PRIORITY.OFF,
@@ -267,7 +277,7 @@
           ? clamp(
               intOr(raw.buildUse, CFG.BUILDING_USE.SHELTER),
               CFG.BUILDING_USE.SHELTER,
-              CFG.BUILDING_USE.POWER,
+              CFG.BUILDING_USE.BARN,
             )
           : null,
       reserved: resources(raw.reserved),
@@ -328,6 +338,26 @@
     };
   }
 
+  function normalizeField(raw) {
+    if (!raw || !Number.isInteger(raw.id) || raw.id < 1) return null;
+    const kind = clamp(
+        intOr(raw.kind, CFG.FARM_KIND.FIELD),
+        CFG.FARM_KIND.FIELD,
+        CFG.FARM_KIND.VAST_FIELD,
+      ),
+      maxHP = Math.max(1, numberOr(raw.maxHP, CFG.AGRICULTURE.HP[kind]));
+    return {
+      id: raw.id,
+      kind,
+      x: numberOr(raw.x, 0),
+      y: numberOr(raw.y, 0),
+      hp: clamp(numberOr(raw.hp, maxHP), 0, maxHP),
+      maxHP,
+      active: raw.active !== false,
+      fertilized: Boolean(raw.fertilized),
+    };
+  }
+
   function normalizeBuilding(raw) {
     if (!raw || !Number.isInteger(raw.id) || raw.id < 0) return null;
     return {
@@ -346,12 +376,17 @@
       use: clamp(
         intOr(raw.use, CFG.BUILDING_USE.ABANDONED),
         CFG.BUILDING_USE.ABANDONED,
-        CFG.BUILDING_USE.POWER,
+        CFG.BUILDING_USE.BARN,
       ),
       hp: Math.max(0, numberOr(raw.hp, 0)),
       maxHP: Math.max(0, numberOr(raw.maxHP, 0)),
       active: raw.active !== false,
       productionT: Math.max(0, numberOr(raw.productionT, 0)),
+      recipe:
+        raw.recipe === CFG.RECIPE.GRAIN || raw.recipe === CFG.RECIPE.MEAT
+          ? raw.recipe
+          : CFG.RECIPE.MEAT,
+      fertilized: Boolean(raw.fertilized),
     };
   }
 
@@ -502,6 +537,7 @@
       jobIds = [],
       squadIds = [],
       fortificationIds = [],
+      fieldIds = [],
       buildingIds = [];
     if (Array.isArray(source.citizens))
       for (let i = 0; i < source.citizens.length; i++) {
@@ -535,6 +571,14 @@
           zone.fortifications.push(fortification);
         }
       }
+    if (Array.isArray(source.fields))
+      for (let i = 0; i < source.fields.length; i++) {
+        const field = normalizeField(source.fields[i]);
+        if (field && !fieldIds.includes(field.id)) {
+          fieldIds.push(field.id);
+          zone.fields.push(field);
+        }
+      }
     if (Array.isArray(source.buildings))
       for (let i = 0; i < source.buildings.length; i++) {
         const building = normalizeBuilding(source.buildings[i]);
@@ -557,6 +601,7 @@
     zone.nextJobId = Math.max(1, intOr(source.nextJobId, 1));
     zone.nextSquadId = Math.max(1, intOr(source.nextSquadId, 1));
     zone.nextFortificationId = Math.max(1, intOr(source.nextFortificationId, 1));
+    zone.nextFieldId = Math.max(1, intOr(source.nextFieldId, 1));
     for (let i = 0; i < zone.citizens.length; i++)
       zone.nextCitizenId = Math.max(zone.nextCitizenId, zone.citizens[i].id + 1);
     for (let i = 0; i < zone.jobs.length; i++)
@@ -565,6 +610,8 @@
       zone.nextSquadId = Math.max(zone.nextSquadId, zone.squads[i].id + 1);
     for (let i = 0; i < zone.fortifications.length; i++)
       zone.nextFortificationId = Math.max(zone.nextFortificationId, zone.fortifications[i].id + 1);
+    for (let i = 0; i < zone.fields.length; i++)
+      zone.nextFieldId = Math.max(zone.nextFieldId, zone.fields[i].id + 1);
     return clean;
   }
 
@@ -593,6 +640,7 @@
       if (data.v === 7) data = migrateV7(data);
       if (data.v === 8) data = migrateV8(data);
       if (data.v === 9) data = migrateV9(data);
+      if (data.v === 10) data = migrateV10(data);
       return normalize(data);
     }
 
@@ -622,6 +670,10 @@
 
     static migrateV9(data) {
       return migrateV9(data);
+    }
+
+    static migrateV10(data) {
+      return migrateV10(data);
     }
 
     static normalize(data) {

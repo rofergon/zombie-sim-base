@@ -39,6 +39,9 @@
     "munición",
     "medicina",
     "ciencia",
+    "grano",
+    "carne",
+    "fertilizante",
   ]);
   const RESOURCE_ICON = Object.freeze([
     "zi-food",
@@ -48,6 +51,9 @@
     "zi-ammo",
     "zi-medicine",
     "zi-science",
+    "zi-grain",
+    "zi-meat",
+    "zi-fertilizer",
   ]);
   const USE_LABEL = Object.freeze({
     [CFG.BUILDING_USE.SHELTER]: "refugio",
@@ -57,19 +63,24 @@
     [CFG.BUILDING_USE.RESEARCH]: "centro de investigación",
     [CFG.BUILDING_USE.MEDBAY]: "enfermería",
     [CFG.BUILDING_USE.SQUAD_QUARTERS]: "cuartel de patrullas",
-    [CFG.BUILDING_USE.FARM]: "granja en azotea",
+    [CFG.BUILDING_USE.FARM]: "invernadero",
     [CFG.BUILDING_USE.POWER]: "generador",
+    [CFG.BUILDING_USE.BARN]: "granero",
   });
   const TECH_LABEL = Object.freeze({
     [CFG.TECH.AGRICULTURE]: "Agricultura",
     [CFG.TECH.POWER]: "Energía",
     [CFG.TECH.FORTIFICATIONS]: "Fortificaciones",
     [CFG.TECH.MEDICINE]: "Medicina mejorada",
+    [CFG.TECH.FERTILIZATION]: "Técnicas de fertilización",
+    [CFG.TECH.GREENHOUSES]: "Invernaderos",
+    [CFG.TECH.EFFICIENT_COOKING]: "Cocina eficiente",
   });
   const SYSTEM_META = Object.freeze({
     build: ["Construcción", "zi-build"],
     citizens: ["Habitantes", "zi-worker"],
     research: ["Investigación", "zi-research"],
+    agriculture: ["Cultivos", "zi-grain"],
     economy: ["Economía", "zi-production"],
     laws: ["Leyes", "zi-laws"],
     radio: ["Radio", "zi-radio"],
@@ -183,8 +194,9 @@
         '<option value="6">centro de investigación · M12 Me8 L8</option>' +
         '<option value="7">enfermería · M10 Me6 L8</option>' +
         '<option value="8">cuartel de escuadra · M16 Me8 L8</option>' +
-        '<option value="9">granja en azotea · requiere investigación</option>' +
+        '<option value="9">invernadero · requiere investigación</option>' +
         '<option value="10">generador · requiere investigación</option>' +
+        '<option value="11">granero · M8 Me3 L4</option>' +
         "</select>" +
         '<button id="zone-adapt" type="button">Adaptar edificio</button>' +
         '<button id="zone-toggle-building" type="button">Pausar operación</button>' +
@@ -194,6 +206,9 @@
         '<button type="button" data-tech="2">Energía · C10</button>' +
         '<button type="button" data-tech="3">Fortificaciones · C12</button>' +
         '<button type="button" data-tech="4">Medicina · C8</button>' +
+        '<button type="button" data-tech="5">Fertilización · C6</button>' +
+        '<button type="button" data-tech="6">Invernaderos · C12</button>' +
+        '<button type="button" data-tech="7">Cocina eficiente · C8</button>' +
         "</div>" +
         "</div></section>" +
         "</aside>" +
@@ -203,6 +218,7 @@
         '<button type="button" data-system="citizens" data-tip="Habitantes y trabajo"><span class="zone-icon zi-worker"></span><small>habitantes</small></button>' +
         '<button type="button" data-main-action="squads" data-tip="Patrullas de campo"><span class="zone-icon zi-squads"></span><small>patrullas</small></button>' +
         '<button type="button" data-system="research" data-tip="Árbol de investigación"><span class="zone-icon zi-research"></span><small>investigar</small></button>' +
+        '<button type="button" data-system="agriculture" data-tip="Cultivos y cadena alimentaria"><span class="zone-icon zi-grain"></span><small>cultivar</small></button>' +
         '<button type="button" data-system="defense" data-tip="Fortificaciones y defensa activa"><span class="zone-icon zi-threat"></span><small>defender</small></button>' +
         '<div class="zone-system-shortcuts">' +
         '<button type="button" data-system="economy" data-tip="Economía"><span class="zone-icon zi-production"></span></button>' +
@@ -409,6 +425,11 @@
           adapt = event.target.closest("[data-system-adapt-submit]"),
           defenseBuild = event.target.closest("[data-defense-build]"),
           defenseRemove = event.target.closest("[data-defense-remove]"),
+          fieldBuild = event.target.closest("[data-field-build]"),
+          fieldRemove = event.target.closest("[data-field-remove]"),
+          fieldAction = event.target.closest("[data-field-action]"),
+          fieldFocus = event.target.closest("[data-field-focus]"),
+          productionAction = event.target.closest("[data-production-action]"),
           expedition = event.target.closest("[data-expedition-region]"),
           exportMap = event.target.closest("[data-export-map]"),
           campaignChoice = event.target.closest("[data-campaign-choice]"),
@@ -432,6 +453,21 @@
         } else if (defenseBuild && this.callbacks)
           this.callbacks.armDefense(Number(defenseBuild.dataset.defenseBuild));
         else if (defenseRemove && this.callbacks) this.callbacks.armDefense(0);
+        else if (fieldBuild && this.callbacks)
+          this.callbacks.armField(Number(fieldBuild.dataset.fieldBuild));
+        else if (fieldRemove && this.callbacks) this.callbacks.armField(0);
+        else if (fieldAction && this.callbacks)
+          this.callbacks.fieldAction(
+            Number(fieldAction.dataset.fieldId),
+            fieldAction.dataset.fieldAction,
+          );
+        else if (fieldFocus && this.callbacks)
+          this.callbacks.focusField(Number(fieldFocus.dataset.fieldFocus));
+        else if (productionAction && this.callbacks)
+          this.callbacks.productionAction(
+            Number(productionAction.dataset.productionId),
+            productionAction.dataset.productionAction,
+          );
         else if (expedition && this.callbacks)
           this.callbacks.expedition(expedition.dataset.expeditionRegion);
         else if (exportMap && this.callbacks) this.callbacks.exportMap();
@@ -644,6 +680,30 @@
           ]),
         ];
       else if (name === "research") signatureData = [name, model.stock[R.SCIENCE], model.tech];
+      else if (name === "agriculture")
+        signatureData = [
+          name,
+          model.stock,
+          model.tech,
+          model.agriculture.weather,
+          model.agriculture.fields.map((field) => [
+            field.id,
+            field.kind,
+            Math.ceil(field.hp),
+            field.active,
+            field.fertilized,
+            this._agricultureJobSignature(model.jobs, "field", field.id),
+          ]),
+          model.agriculture.buildings.map((record) => [
+            record.id,
+            record.use,
+            record.active,
+            record.powered,
+            record.recipe,
+            record.fertilized,
+            this._agricultureJobSignature(model.jobs, "building", record.id),
+          ]),
+        ];
       else if (name === "economy")
         signatureData = [
           name,
@@ -672,6 +732,7 @@
       if (name === "build") this._renderBuildSystem(model);
       else if (name === "citizens") this._renderCitizensSystem(model);
       else if (name === "research") this._renderResearchSystem(model);
+      else if (name === "agriculture") this._renderAgricultureSystem(model);
       else if (name === "economy") this._renderEconomySystem(model);
       else if (name === "defense") this._renderDefenseSystem(model);
       else if (name === "expedition") this._renderExpeditionSystem(model);
@@ -800,6 +861,165 @@
           (unlocked ? "investigado" : cost + " ciencia") +
           "</small></span></button>";
       }
+      this.systemBody.innerHTML = html + "</div>";
+    }
+
+    _agricultureJob(jobs, targetKind, id) {
+      for (let i = 0; i < jobs.length; i++) {
+        const job = jobs[i];
+        if (
+          job.state === CFG.JOB_STATE.ACTIVE &&
+          (job.targetKind === "field" ? "field" : "building") === targetKind &&
+          job.targetId === id
+        )
+          return job;
+      }
+      return null;
+    }
+
+    _agricultureJobSignature(jobs, targetKind, id) {
+      const job = this._agricultureJob(jobs, targetKind, id);
+      return job
+        ? [job.priority, job.assigned.length, job.capacity, Math.round(job.progress * 10)]
+        : null;
+    }
+
+    _renderAgricultureSystem(model) {
+      const agriculture = model.agriculture,
+        weather = agriculture.weather,
+        farmingUnlocked = Boolean(model.tech[CFG.TECH.AGRICULTURE]),
+        fertilizationUnlocked = Boolean(model.tech[CFG.TECH.FERTILIZATION]);
+      let html =
+        '<div class="zone-weather-card"><span class="zone-icon zi-weather"></span><span><b>' +
+        weather.season +
+        " · " +
+        weather.temperature +
+        " °C</b><small>" +
+        weather.label +
+        " · campos al " +
+        Math.round(weather.rate * 100) +
+        "% · los invernaderos no sufren penalización</small></span></div>" +
+        '<div class="zone-food-chain"><b>cadena alimentaria</b><span>campo / invernadero → grano</span><span>granero: 2 grano → 2 carne + 1 fertilizante</span><span>cocina: 2 grano + madera → 4 raciones</span><span>cocina: 2 carne + madera → 5 raciones</span></div>' +
+        '<div class="zone-field-builders">';
+      for (let kind = CFG.FARM_KIND.FIELD; kind <= CFG.FARM_KIND.VAST_FIELD; kind++) {
+        const cost = CFG.AGRICULTURE.COSTS[kind],
+          label = kind === CFG.FARM_KIND.FIELD ? "Campo" : "Campo extenso",
+          workers = CFG.AGRICULTURE.WORKERS[kind],
+          affordable = model.stock[R.WOOD] >= cost[R.WOOD] && model.stock[R.METAL] >= cost[R.METAL];
+        html +=
+          '<button type="button" data-field-build="' +
+          kind +
+          '" ' +
+          (farmingUnlocked && affordable ? "" : "disabled") +
+          '><span class="zone-icon zi-grain"></span><span><b>' +
+          label +
+          "</b><small>" +
+          workers +
+          " trabajadores · M" +
+          cost[R.WOOD] +
+          " Me" +
+          cost[R.METAL] +
+          (farmingUnlocked ? "" : " · requiere Agricultura") +
+          "</small></span></button>";
+      }
+      html +=
+        '<button type="button" data-field-remove><span class="zone-icon zi-build"></span><span><b>Retirar campo</b><small>reembolsa la mitad de materiales</small></span></button></div>';
+      html +=
+        '<h3 class="zone-system-subtitle">CAMPOS EN EL MAPA</h3><div class="zone-agriculture-list">';
+      for (let i = 0; i < agriculture.fields.length; i++) {
+        const field = agriculture.fields[i],
+          job = this._agricultureJob(model.jobs, "field", field.id),
+          seconds = agriculture.controller.productionSeconds(field),
+          progress =
+            job && Number.isFinite(seconds) ? Math.min(100, (job.progress / seconds) * 100) : 0,
+          label = field.kind === CFG.FARM_KIND.VAST_FIELD ? "Campo extenso " : "Campo ",
+          status = agriculture.controller.productionStatus(field);
+        html +=
+          '<article class="zone-agriculture-row"><header><button type="button" data-field-focus="' +
+          field.id +
+          '" title="centrar en el mapa">⌖</button><span><b>' +
+          label +
+          field.id +
+          "</b><small>" +
+          status +
+          " · " +
+          (job ? job.assigned.length + "/" + job.capacity + " trabajadores" : "sin tarea") +
+          '</small></span></header><i><em style="width:' +
+          progress.toFixed(1) +
+          '%"></em></i><footer><button type="button" data-field-action="toggle" data-field-id="' +
+          field.id +
+          '">' +
+          (field.active ? "pausar" : "activar") +
+          '</button><button type="button" data-field-action="priority" data-field-id="' +
+          field.id +
+          '">prioridad ' +
+          (job ? job.priority : 0) +
+          '</button><button type="button" data-field-action="fertilizer" data-field-id="' +
+          field.id +
+          '" ' +
+          (fertilizationUnlocked && field.hp > 0 ? "" : "disabled") +
+          ">" +
+          (field.fertilized ? "con fertilizante 7×" : "sin fertilizante 4×") +
+          "</button></footer></article>";
+      }
+      if (!agriculture.fields.length)
+        html += '<p class="zone-system-empty">No hay campos preparados.</p>';
+      html +=
+        '</div><h3 class="zone-system-subtitle">EDIFICIOS DE ALIMENTACIÓN</h3><div class="zone-agriculture-list">';
+      for (let i = 0; i < agriculture.buildings.length; i++) {
+        const record = agriculture.buildings[i],
+          job = this._agricultureJob(model.jobs, "building", record.id),
+          seconds = agriculture.adaptations.productionSeconds(record),
+          progress =
+            job && Number.isFinite(seconds) ? Math.min(100, (job.progress / seconds) * 100) : 0,
+          status = agriculture.adaptations.productionStatus(record),
+          title = USE_LABEL[record.use],
+          recipe =
+            record.use === CFG.BUILDING_USE.COOKHOUSE
+              ? record.recipe === CFG.RECIPE.GRAIN
+                ? "grano → 4 raciones"
+                : "carne → 5 raciones"
+              : record.use === CFG.BUILDING_USE.BARN
+                ? "grano → carne + fertilizante"
+                : record.fertilized
+                  ? "fertilizado · 7 grano"
+                  : "básico · 4 grano";
+        html +=
+          '<article class="zone-agriculture-row"><header><span class="zone-icon zi-production"></span><span><b>' +
+          title +
+          " · edificio " +
+          (record.id + 1) +
+          "</b><small>" +
+          status +
+          " · " +
+          recipe +
+          " · " +
+          (job ? job.assigned.length + "/" + job.capacity + " trabajadores" : "sin tarea") +
+          '</small></span></header><i><em style="width:' +
+          progress.toFixed(1) +
+          '%"></em></i><footer><button type="button" data-production-action="toggle" data-production-id="' +
+          record.id +
+          '">' +
+          (record.active ? "pausar" : "activar") +
+          "</button>";
+        if (record.use === CFG.BUILDING_USE.COOKHOUSE)
+          html +=
+            '<button type="button" data-production-action="recipe" data-production-id="' +
+            record.id +
+            '">cambiar receta</button>';
+        if (record.use === CFG.BUILDING_USE.FARM)
+          html +=
+            '<button type="button" data-production-action="fertilizer" data-production-id="' +
+            record.id +
+            '" ' +
+            (fertilizationUnlocked ? "" : "disabled") +
+            ">" +
+            (record.fertilized ? "quitar fertilizante" : "usar fertilizante") +
+            "</button>";
+        html += "</footer></article>";
+      }
+      if (!agriculture.buildings.length)
+        html += '<p class="zone-system-empty">Adapta un granero, una cocina o un invernadero.</p>';
       this.systemBody.innerHTML = html + "</div>";
     }
 

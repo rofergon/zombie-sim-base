@@ -8,7 +8,14 @@
   const U = CFG.BUILDING_USE;
   const T = CFG.TECH;
 
-  const POWERED_USES = Object.freeze([U.COOKHOUSE, U.WORKSHOP, U.RESEARCH, U.MEDBAY, U.FARM]);
+  const POWERED_USES = Object.freeze([
+    U.COOKHOUSE,
+    U.WORKSHOP,
+    U.RESEARCH,
+    U.MEDBAY,
+    U.FARM,
+    U.BARN,
+  ]);
 
   class ZoneAdaptations {
     constructor(state, map) {
@@ -21,7 +28,6 @@
       this.updateT = 0;
       this.medT = 0;
       this.overcrowded = false;
-      this.foodMultiplier = 1;
     }
 
     connect(citizens, tasks, onChanged) {
@@ -33,8 +39,9 @@
     }
 
     isUnlocked(use) {
-      if (use === U.FARM) return Boolean(this.state.zone.tech[T.AGRICULTURE]);
+      if (use === U.FARM) return Boolean(this.state.zone.tech[T.GREENHOUSES]);
       if (use === U.POWER) return Boolean(this.state.zone.tech[T.POWER]);
+      if (use === U.BARN) return true;
       return use >= U.SHELTER && use <= U.SQUAD_QUARTERS;
     }
 
@@ -45,7 +52,7 @@
     canAfford(use) {
       const cost = this.cost(use);
       if (!cost) return false;
-      for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < cost[i]) return false;
+      for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < (cost[i] || 0)) return false;
       return true;
     }
 
@@ -75,16 +82,23 @@
       for (let i = 0; i < this.map.records.length; i++) {
         const record = this.map.records[i];
         if (
-          (record.use === U.FARM || record.use === U.WORKSHOP) &&
+          [U.COOKHOUSE, U.WORKSHOP, U.FARM, U.BARN].includes(record.use) &&
           !this.tasks.forBuilding(record.id)
         )
           this.tasks.postProduction(record.id);
+        const job = this.tasks.forBuilding(record.id);
+        if (job && job.type === CFG.JOB.PRODUCE) job.capacity = this.productionCapacity(record);
       }
     }
 
     research(tech) {
       if (!Number.isInteger(tech) || tech <= 0 || tech >= T.COUNT) return false;
       if (this.state.zone.tech[tech] || this.map.countUse(U.RESEARCH) <= 0) return false;
+      if (
+        [T.FERTILIZATION, T.GREENHOUSES, T.EFFICIENT_COOKING].includes(tech) &&
+        !this.state.zone.tech[T.AGRICULTURE]
+      )
+        return false;
       const cost = CFG.RESEARCH.COSTS[tech];
       if (this.state.stock[R.SCIENCE] < cost) return false;
       this.state.stock[R.SCIENCE] -= cost;
@@ -97,6 +111,25 @@
           record.maxHP *= 1.35;
           record.hp += record.maxHP - oldMax;
         }
+      if (this.onChanged) this.onChanged();
+      return true;
+    }
+
+    setRecipe(record, recipe) {
+      if (
+        !record ||
+        record.use !== U.COOKHOUSE ||
+        (recipe !== CFG.RECIPE.GRAIN && recipe !== CFG.RECIPE.MEAT)
+      )
+        return false;
+      record.recipe = recipe;
+      if (this.onChanged) this.onChanged();
+      return true;
+    }
+
+    toggleFertilizer(record) {
+      if (!record || record.use !== U.FARM || !this.state.zone.tech[T.FERTILIZATION]) return false;
+      record.fertilized = !record.fertilized;
       if (this.onChanged) this.onChanged();
       return true;
     }
@@ -128,7 +161,6 @@
       power.capacity = 1 + this.map.countUse(U.POWER) * CFG.ADAPT.POWER_PER_GENERATOR;
       power.demand = 0;
       power.used = 0;
-      this.foodMultiplier = 1;
       for (let i = 0; i < this.map.records.length; i++) this.map.records[i].powered = false;
       for (let i = 0; i < this.map.records.length; i++) {
         const record = this.map.records[i];
@@ -137,7 +169,6 @@
         if (power.used < power.capacity) {
           record.powered = true;
           power.used++;
-          if (record.use === U.COOKHOUSE) this.foodMultiplier = 1.35;
         }
       }
       return power;
@@ -174,7 +205,28 @@
     produce(record) {
       if (!record || !record.active || !record.powered || record.hp <= 0) return false;
       if (record.use === U.FARM) {
-        this.state.stock[R.FOOD] += CFG.ADAPT.FARM_FOOD;
+        const fertilized = record.fertilized && this.state.zone.tech[T.FERTILIZATION];
+        if (fertilized) this.state.stock[R.FERTILIZER] -= CFG.ADAPT.FARM_FERTILIZER;
+        this.state.stock[R.GRAIN] += fertilized
+          ? CFG.ADAPT.FARM_FERTILIZED_GRAIN
+          : CFG.ADAPT.FARM_GRAIN;
+        return true;
+      }
+      if (record.use === U.BARN) {
+        this.state.stock[R.GRAIN] -= CFG.ADAPT.BARN_GRAIN;
+        this.state.stock[R.MEAT] += CFG.ADAPT.BARN_MEAT;
+        this.state.stock[R.FERTILIZER] += CFG.ADAPT.BARN_FERTILIZER;
+        return true;
+      }
+      if (record.use === U.COOKHOUSE) {
+        this.state.stock[R.WOOD] -= CFG.ADAPT.COOKHOUSE_WOOD;
+        if (record.recipe === CFG.RECIPE.GRAIN) {
+          this.state.stock[R.GRAIN] -= CFG.ADAPT.COOKHOUSE_GRAIN;
+          this.state.stock[R.FOOD] += CFG.ADAPT.COOKHOUSE_GRAIN_FOOD;
+        } else {
+          this.state.stock[R.MEAT] -= CFG.ADAPT.COOKHOUSE_MEAT;
+          this.state.stock[R.FOOD] += CFG.ADAPT.COOKHOUSE_MEAT_FOOD;
+        }
         return true;
       }
       if (record.use === U.WORKSHOP && this.state.stock[R.METAL] >= CFG.ADAPT.WORKSHOP_METAL) {
@@ -186,11 +238,56 @@
     }
 
     productionSeconds(record) {
-      return record && record.use === U.FARM ? CFG.ADAPT.FARM_SECONDS : CFG.ADAPT.WORKSHOP_SECONDS;
+      if (!record) return Infinity;
+      if (record.use === U.FARM) return CFG.ADAPT.FARM_SECONDS;
+      if (record.use === U.BARN) return CFG.ADAPT.BARN_SECONDS;
+      if (record.use === U.COOKHOUSE)
+        return CFG.ADAPT.COOKHOUSE_SECONDS * (this.state.zone.tech[T.EFFICIENT_COOKING] ? 0.75 : 1);
+      return CFG.ADAPT.WORKSHOP_SECONDS;
+    }
+
+    productionCapacity(record) {
+      if (!record) return 1;
+      if (record.use === U.FARM || record.use === U.WORKSHOP) return record.use === U.FARM ? 2 : 1;
+      return Math.max(1, Math.min(12, Math.round(record.area / 7000)));
+    }
+
+    canProduce(record) {
+      if (!record || !record.active || !record.powered || record.hp <= 0) return false;
+      if (record.use === U.FARM)
+        return (
+          !record.fertilized ||
+          (this.state.zone.tech[T.FERTILIZATION] &&
+            this.state.stock[R.FERTILIZER] >= CFG.ADAPT.FARM_FERTILIZER)
+        );
+      if (record.use === U.BARN) return this.state.stock[R.GRAIN] >= CFG.ADAPT.BARN_GRAIN;
+      if (record.use === U.COOKHOUSE)
+        return (
+          this.state.stock[R.WOOD] >= CFG.ADAPT.COOKHOUSE_WOOD &&
+          (record.recipe === CFG.RECIPE.GRAIN
+            ? this.state.stock[R.GRAIN] >= CFG.ADAPT.COOKHOUSE_GRAIN
+            : this.state.stock[R.MEAT] >= CFG.ADAPT.COOKHOUSE_MEAT)
+        );
+      if (record.use === U.WORKSHOP) return this.state.stock[R.METAL] >= CFG.ADAPT.WORKSHOP_METAL;
+      return false;
+    }
+
+    productionStatus(record) {
+      if (!record || record.hp <= 0) return "destruido";
+      if (!record.active) return "pausado";
+      if (!record.powered) return "sin energía";
+      if (!this.canProduce(record)) {
+        if (record.use === U.FARM && record.fertilized) return "sin fertilizante";
+        if (record.use === U.BARN) return "sin grano";
+        if (record.use === U.COOKHOUSE)
+          return record.recipe === CFG.RECIPE.GRAIN ? "sin grano o madera" : "sin carne o madera";
+        return "sin insumos";
+      }
+      return "produciendo";
     }
 
     foodReliefMultiplier() {
-      return this.foodMultiplier;
+      return 1;
     }
 
     housingCapacity() {

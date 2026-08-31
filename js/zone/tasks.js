@@ -19,6 +19,7 @@
       this.reconcileT = 0;
       this.onChanged = null;
       this.adaptations = null;
+      this.agriculture = null;
     }
 
     connect(citizens, onChanged) {
@@ -28,6 +29,10 @@
 
     connectAdaptations(adaptations) {
       this.adaptations = adaptations;
+    }
+
+    connectAgriculture(agriculture) {
+      this.agriculture = agriculture;
     }
 
     markDirty() {
@@ -42,7 +47,25 @@
     forBuilding(buildingId) {
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
-        if (job.targetId === buildingId && job.state === CFG.JOB_STATE.ACTIVE) return job;
+        if (
+          job.targetKind !== "field" &&
+          job.targetId === buildingId &&
+          job.state === CFG.JOB_STATE.ACTIVE
+        )
+          return job;
+      }
+      return null;
+    }
+
+    forField(fieldId) {
+      for (let i = 0; i < this.jobs.length; i++) {
+        const job = this.jobs[i];
+        if (
+          job.targetKind === "field" &&
+          job.targetId === fieldId &&
+          job.state === CFG.JOB_STATE.ACTIVE
+        )
+          return job;
       }
       return null;
     }
@@ -62,6 +85,7 @@
         id: this.state.zone.nextJobId++,
         type: CFG.JOB.SALVAGE,
         targetId: buildingId,
+        targetKind: "building",
         priority: Number.isInteger(priority) ? priority : CFG.PRIORITY.NORMAL,
         capacity: CFG.TASK.SALVAGE_CAPACITY,
         progress: 0,
@@ -92,6 +116,7 @@
         id: this.state.zone.nextJobId++,
         type: CFG.JOB.BUILD,
         targetId: buildingId,
+        targetKind: "building",
         priority: CFG.PRIORITY.HIGH,
         capacity: CFG.TASK.BUILD_CAPACITY,
         progress: 0,
@@ -117,8 +142,36 @@
         id: this.state.zone.nextJobId++,
         type: CFG.JOB.PRODUCE,
         targetId: buildingId,
+        targetKind: "building",
         priority: CFG.PRIORITY.NORMAL,
-        capacity: CFG.TASK.PRODUCE_CAPACITY,
+        capacity: this.adaptations
+          ? this.adaptations.productionCapacity(record)
+          : CFG.TASK.PRODUCE_CAPACITY,
+        progress: 0,
+        state: CFG.JOB_STATE.ACTIVE,
+        assigned: [],
+        buildUse: null,
+        reserved: Array.from({ length: R.COUNT }, () => 0),
+      };
+      this.jobs.push(job);
+      this.markDirty();
+      this.reconcile();
+      if (this.onChanged) this.onChanged();
+      return job;
+    }
+
+    postFieldProduction(fieldId, capacity) {
+      const field = this.agriculture && this.agriculture.at(fieldId);
+      if (!field) return null;
+      const current = this.forField(fieldId);
+      if (current) return current;
+      const job = {
+        id: this.state.zone.nextJobId++,
+        type: CFG.JOB.PRODUCE,
+        targetId: fieldId,
+        targetKind: "field",
+        priority: CFG.PRIORITY.NORMAL,
+        capacity: Math.max(1, capacity | 0),
         progress: 0,
         state: CFG.JOB_STATE.ACTIVE,
         assigned: [],
@@ -168,8 +221,8 @@
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
         if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
-        const target = this.map.at(job.targetId);
-        if (!this.map.reachable(target)) {
+        const target = this._target(job);
+        if (!this._reachable(job, target)) {
           this.cancel(job.id);
           continue;
         }
@@ -198,6 +251,10 @@
       for (let i = 0; i < this.jobs.length; i++) {
         const job = this.jobs[i];
         if (job.state !== CFG.JOB_STATE.ACTIVE) continue;
+        if (!this._reachable(job, this._target(job))) {
+          this.cancel(job.id);
+          continue;
+        }
         for (let j = job.assigned.length - 1; j >= 0; j--) {
           const worker = this.citizens.at(job.assigned[j]);
           if (
@@ -340,12 +397,16 @@
 
     _toJob(worker, job, dt, t, nav) {
       if (!job) return;
-      const record = this.map.at(job.targetId),
-        door = record && record.shape.door,
+      const record = this._target(job),
+        door = record && record.shape && record.shape.door,
         target = door ? door.inner : record;
       if (!target) return;
-      worker.workTarget.x = target.x === undefined ? target.cx : target.x;
-      worker.workTarget.y = target.y === undefined ? target.cy : target.y;
+      if (job.targetKind === "field")
+        this.agriculture.workerPoint(record, worker.cid, worker.workTarget);
+      else {
+        worker.workTarget.x = target.x === undefined ? target.cx : target.x;
+        worker.workTarget.y = target.y === undefined ? target.cy : target.y;
+      }
       const result = ZS.planAndFollow(
         worker,
         worker.workTarget,
@@ -355,7 +416,7 @@
         t,
         nav,
       );
-      if (result === "arrived" || worker.bld === job.targetId) {
+      if (result === "arrived" || (job.targetKind !== "field" && worker.bld === job.targetId)) {
         worker.workerState = WS.WORKING;
         worker.zoneBuildingId = job.targetId;
         worker.vx = worker.vy = 0;
@@ -370,16 +431,17 @@
         return;
       }
       if (job.type === CFG.JOB.PRODUCE) {
-        const record = this.map.at(job.targetId),
-          seconds = this.adaptations ? this.adaptations.productionSeconds(record) : Infinity;
+        const record = this._target(job),
+          controller = job.targetKind === "field" ? this.agriculture : this.adaptations,
+          seconds = controller ? controller.productionSeconds(record) : Infinity;
         worker.wantMove = false;
         worker.vx *= Math.max(0, 1 - dt * 6);
         worker.vy *= Math.max(0, 1 - dt * 6);
-        if (!record || !record.active || !record.powered) return;
+        if (!record || !controller || !controller.canProduce(record)) return;
         job.progress += dt;
         if (job.progress >= seconds) {
           job.progress -= seconds;
-          if (this.adaptations.produce(record) && this.onChanged) this.onChanged();
+          if (controller.produce(record) && this.onChanged) this.onChanged();
         }
         return;
       }
@@ -438,6 +500,19 @@
       }
       worker.vx = worker.vy = 0;
       if (this.onChanged) this.onChanged();
+    }
+
+    _target(job) {
+      if (!job) return null;
+      return job.targetKind === "field" && this.agriculture
+        ? this.agriculture.at(job.targetId)
+        : this.map.at(job.targetId);
+    }
+
+    _reachable(job, target) {
+      return job && job.targetKind === "field"
+        ? Boolean(this.agriculture && this.agriculture.reachable(target))
+        : this.map.reachable(target);
     }
   }
 

@@ -15,9 +15,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         zone: { hqId: 2, initialized: false, buildings: [] },
       }),
     );
-    assert.equal(migrated.v, 10);
+    assert.equal(migrated.v, 11);
     assert.equal(migrated.world.seed, 77);
-    assert.equal(migrated.zone.tech.length, 5);
+    assert.equal(migrated.zone.tech.length, 8);
     assert.equal(migrated.zone.defense.active, false);
     assert.deepEqual(migrated.zone.fortifications, []);
 
@@ -59,6 +59,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       complete(targets[0], U.RESEARCH);
       const science0 = scenario.state.stock[R.SCIENCE];
       const agriculture = scenario.adaptations.research(T.AGRICULTURE),
+        greenhousesTech = scenario.adaptations.research(T.GREENHOUSES),
         powerTech = scenario.adaptations.research(T.POWER),
         fortificationsTech = scenario.adaptations.research(T.FORTIFICATIONS);
       complete(targets[1], U.POWER);
@@ -67,10 +68,10 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       scenario.tasks.reconcile();
       const production = scenario.tasks.forBuilding(targets[2].id),
         producer = scenario.citizens.at(production.assigned[0]),
-        food0 = scenario.state.stock[R.FOOD];
+        grain0 = scenario.state.stock[R.GRAIN];
       production.progress = CFG.ADAPT.FARM_SECONDS;
       scenario.tasks._work(producer, production, 0.01);
-      const food1 = scenario.state.stock[R.FOOD];
+      const grain1 = scenario.state.stock[R.GRAIN];
       scenario.state.save();
       return {
         beforeCancel,
@@ -80,9 +81,10 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         farmUse: targets[2].use,
         farmPowered: targets[2].powered,
         productionType: production.type,
-        food0,
-        food1,
+        grain0,
+        grain1,
         agriculture,
+        greenhousesTech,
         powerTech,
         fortificationsTech,
         scienceSpent: science0 - scenario.state.stock[R.SCIENCE],
@@ -95,11 +97,12 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(colony.farmUse, 9);
     assert.equal(colony.farmPowered, true);
     assert.equal(colony.productionType, 5);
-    assert.equal(colony.food1 - colony.food0, 3);
+    assert.equal(colony.grain1 - colony.grain0, 4);
     assert.equal(colony.agriculture, true);
+    assert.equal(colony.greenhousesTech, true);
     assert.equal(colony.powerTech, true);
     assert.equal(colony.fortificationsTech, true);
-    assert.equal(colony.scienceSpent, 30);
+    assert.equal(colony.scienceSpent, 42);
 
     await sim.page.goto(pageUrl("zone.html", { seed: 1, record: 1 }));
     await sim.page.waitForFunction(() => ZS.scenario && ZS.scenario.map.hq);

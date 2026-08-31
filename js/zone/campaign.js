@@ -1092,12 +1092,12 @@
 
     _canPay(cost) {
       if (!cost) return false;
-      for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < cost[i]) return false;
+      for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < (cost[i] || 0)) return false;
       return true;
     }
 
     _pay(cost) {
-      for (let i = 0; i < R.COUNT; i++) this.state.stock[i] -= cost[i];
+      for (let i = 0; i < R.COUNT; i++) this.state.stock[i] -= cost[i] || 0;
     }
 
     _firstLiving() {

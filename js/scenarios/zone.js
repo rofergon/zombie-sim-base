@@ -20,6 +20,7 @@
       this.squads = new ZS.ZoneSquads(this.state, this.map);
       this.scavenge = new ZS.ZoneScavenge(this.state, this.map);
       this.adaptations = new ZS.ZoneAdaptations(this.state, this.map);
+      this.agriculture = new ZS.ZoneAgriculture(this.state, this.map);
       this.fortifications = new ZS.ZoneFortifications(this.state, this.map);
       this.defense = new ZS.ZoneDefense(this.state, this.map, this.fortifications);
       this.regions = new ZS.ZoneRegions(this.state, this.map);
@@ -109,6 +110,10 @@
         mapContext: (sx, sy, append) => this.issueScreenOrder(sx, sy, append),
         retreat: () => this.retreatSelectedSquads(),
         armDefense: (kind) => this.armDefense(kind),
+        armField: (kind) => this.armField(kind),
+        fieldAction: (id, action) => this.fieldAction(id, action),
+        productionAction: (id, action) => this.productionAction(id, action),
+        focusField: (id) => this.focusField(id),
         stop: () => this.stopSelectedSquads(),
         openSystem: (name) => this.openSystem(name),
         closeSystem: () => this.openSystem(null),
@@ -185,6 +190,7 @@
         this._markUI();
       };
       this.regions.prepare();
+      this.agriculture.prepare(world, nav);
       this.fortifications.prepare(world, nav);
       this.selectedBuilding = this.map.hq || this.map.recommended;
       this.timeScale = this.map.hq ? this.state.scale() : 0;
@@ -206,7 +212,13 @@
       this.squads.connect(this.citizens, this.scavenge, this.agents, () => this._markUI());
       this.scavenge.connect(this.citizens, this.squads, this, this.agents, () => this._markUI());
       this.tasks.connectAdaptations(this.adaptations);
+      this.tasks.connectAgriculture(this.agriculture);
       this.adaptations.connect(this.citizens, this.tasks, () => this._markUI());
+      this.agriculture.connect(this.tasks, this.citizens, this.fortifications, () =>
+        this._markUI(),
+      );
+      this.fortifications.connectAgriculture(this.agriculture);
+      this.defense.connectAgriculture(this.agriculture);
       this.citizens.connectAdaptations(this.adaptations);
       this.defense.connect(this.citizens, this.squads, this, this.agents, () => {
         this._markUI();
@@ -229,6 +241,7 @@
       this.state.advance(dt);
       this.map.update(dt);
       this.adaptations.update(dt);
+      this.agriculture.update(dt);
       this.defense.update(dt, performance.now() / 1000, this.nav);
       this.fortifications.update(dt);
       this.regions.update(dt);
@@ -311,6 +324,7 @@
 
     drawGround(c, world) {
       this.map.drawGround(c);
+      this.agriculture.drawGround(c);
       this.fortifications.drawGround(c);
       const minute = this.state.minute;
       let alpha = 0;
@@ -402,6 +416,7 @@
       c.lineCap = "round";
       c.lineJoin = "round";
       this.fortifications.drawOverlay(c, this.mapLayers.defenses);
+      this.agriculture.drawOverlay(c, this.mapLayers.production);
       this.map.drawHeadquartersFlag(c, zoom);
       this._drawSelectedBuilding(c, zoom);
       for (let i = 0; i < this.selected.length; i++) {
@@ -482,6 +497,7 @@
       }
       this.defense.drawWarning(c);
       this.fortifications.drawPreview(c);
+      this.agriculture.drawPreview(c);
       c.restore();
     }
 
@@ -550,9 +566,13 @@
         return true;
       }
       if (this.spacePan || event.button === 1) return false;
-      if (this.commandMode && this.commandMode.startsWith("defense:") && event.button === 2) {
+      if (
+        this.commandMode &&
+        (this.commandMode.startsWith("defense:") || this.commandMode.startsWith("farm:")) &&
+        event.button === 2
+      ) {
         this._cancelCommand();
-        this.ui.toast("Colocación de defensas cancelada.");
+        this.ui.toast("Colocación cancelada.");
         return true;
       }
       if (event.button === 2) {
@@ -591,6 +611,28 @@
         this._markUI();
         return true;
       }
+      if (this.commandMode && this.commandMode.startsWith("farm:")) {
+        const value = this.commandMode.slice(5);
+        if (value === "remove") {
+          const removed = this.agriculture.removeAt(x, y, true);
+          this.ui.toast(
+            removed
+              ? this.agriculture.label(removed.kind) + " retirado; se recuperó la mitad del coste."
+              : "No hay un campo en ese lugar.",
+          );
+        } else {
+          const kind = Number(value),
+            placed = this.agriculture.place(x, y, kind);
+          this.ui.toast(
+            placed
+              ? this.agriculture.label(kind) + " preparado. Puedes seguir trazando cultivos."
+              : this.agriculture.placementReason(x, y, kind),
+          );
+        }
+        this.agriculture.clearPreview();
+        this._markUI();
+        return true;
+      }
       if (this.commandMode === "order") {
         this._issueOrder(x, y, event.shiftKey);
         this._cancelCommand();
@@ -618,6 +660,10 @@
       if (this.commandMode && this.commandMode.startsWith("defense:")) {
         const value = this.commandMode.slice(8);
         this.fortifications.setPreview(x, y, value === "remove" ? 0 : Number(value));
+      }
+      if (this.commandMode && this.commandMode.startsWith("farm:")) {
+        const value = this.commandMode.slice(5);
+        this.agriculture.setPreview(x, y, value === "remove" ? 0 : Number(value));
       }
       if (!this.drag.active) return;
       this.drag.x1 = x;
@@ -1032,6 +1078,69 @@
       return true;
     }
 
+    armField(kind) {
+      if (!this.map.hq) return false;
+      if (kind !== 0 && !this.agriculture.isUnlocked(kind)) {
+        this.ui.toast("Investiga Agricultura antes de preparar campos.");
+        return false;
+      }
+      this.commandMode = kind === 0 ? "farm:remove" : "farm:" + kind;
+      document.getElementById("c").classList.add("zone-commanding");
+      this.ui.setCommandMode(this.commandMode);
+      this.ui.toast(
+        kind === 0
+          ? "Elige un campo para retirarlo y recuperar la mitad del coste."
+          : "Coloca " +
+              this.agriculture.label(kind) +
+              " sobre terreno libre · clic derecho o Escape cancela.",
+      );
+      return true;
+    }
+
+    fieldAction(id, action) {
+      const field = this.agriculture.at(id);
+      if (!field) return false;
+      let result = false;
+      if (action === "toggle") result = this.agriculture.toggle(field);
+      else if (action === "fertilizer") result = this.agriculture.toggleFertilizer(field);
+      else if (action === "priority") result = this.agriculture.cyclePriority(field);
+      this.ui.toast(
+        result
+          ? "Ajuste del campo aplicado."
+          : "Ese ajuste está bloqueado o el campo ya no está operativo.",
+      );
+      this._markUI();
+      return result;
+    }
+
+    productionAction(id, action) {
+      const record = this.map.at(id);
+      if (!record) return false;
+      let result = false;
+      if (action === "toggle") result = this.adaptations.toggle(record);
+      else if (action === "recipe")
+        result = this.adaptations.setRecipe(
+          record,
+          record.recipe === CFG.RECIPE.GRAIN ? CFG.RECIPE.MEAT : CFG.RECIPE.GRAIN,
+        );
+      else if (action === "fertilizer") result = this.adaptations.toggleFertilizer(record);
+      this.ui.toast(result ? "Producción ajustada." : "Ese ajuste no está disponible.");
+      this._markUI();
+      return result;
+    }
+
+    focusField(id) {
+      const field = this.agriculture.at(id),
+        cam = ZS.debug && ZS.debug.cam;
+      if (!field || !cam) return false;
+      cam.auto = false;
+      cam.x = field.x;
+      cam.y = field.y;
+      cam.zoom = Math.max(cam.minZoom, 1.05);
+      cam.clamp(window.innerWidth, window.innerHeight);
+      return true;
+    }
+
     retreatSelectedSquads() {
       const squads = this._selectedSquads();
       let count = 0;
@@ -1422,6 +1531,7 @@
       this.commandMode = null;
       this.areaTargets.length = 0;
       this.fortifications.clearPreview();
+      this.agriculture.clearPreview();
       document.getElementById("c").classList.remove("zone-commanding");
       this.ui.setCommandMode(null);
     }
@@ -1514,6 +1624,14 @@
           value === "remove"
             ? "Clic para retirar esta defensa · clic der. cancela"
             : "Clic para colocar " + this.fortifications.label(kind) + " · clic der. cancela";
+      } else if (this.commandMode && this.commandMode.startsWith("farm:")) {
+        const value = this.commandMode.slice(5),
+          kind = value === "remove" ? 0 : Number(value);
+        this.agriculture.setPreview(point.x, point.y, kind);
+        hint =
+          value === "remove"
+            ? "Clic para retirar este campo · clic der. cancela"
+            : "Clic para preparar " + this.agriculture.label(kind) + " · clic der. cancela";
       } else if (this.commandMode === "area")
         hint = "Arrastra para distribuir objetivos de saqueo · Shift añade";
       else if (this.commandMode === "attack") hint = "Clic para atacar y avanzar hasta aquí";
@@ -1591,6 +1709,7 @@
             CFG.BUILDING_USE.RESEARCH,
             CFG.BUILDING_USE.MEDBAY,
             CFG.BUILDING_USE.FARM,
+            CFG.BUILDING_USE.BARN,
           ].includes(record.use)
         )
           unpowered = record;
@@ -1598,9 +1717,7 @@
           !stalled &&
           job &&
           job.type === CFG.JOB.PRODUCE &&
-          (job.priority === CFG.PRIORITY.OFF ||
-            (record.use === CFG.BUILDING_USE.WORKSHOP &&
-              this.state.stock[CFG.RESOURCE.METAL] < CFG.ADAPT.WORKSHOP_METAL))
+          (job.priority === CFG.PRIORITY.OFF || !this.adaptations.canProduce(record))
         )
           stalled = record;
       }
@@ -1688,6 +1805,7 @@
     _systemModel() {
       const citizens = [],
         useCounts = [],
+        productionBuildings = [],
         stats = this.citizens.stats();
       for (let i = 0; i < this.citizens.byId.length; i++) {
         const citizen = this.citizens.byId[i];
@@ -1707,12 +1825,21 @@
           arrivalDay: citizen.arrivalDay,
         });
       }
-      for (let use = CFG.BUILDING_USE.SHELTER; use <= CFG.BUILDING_USE.POWER; use++)
+      for (let use = CFG.BUILDING_USE.SHELTER; use <= CFG.BUILDING_USE.BARN; use++)
         useCounts.push({
           use,
           count: this.map.countUse(use),
           unlocked: this.adaptations.isUnlocked(use),
         });
+      for (let i = 0; i < this.map.records.length; i++) {
+        const record = this.map.records[i];
+        if (
+          [CFG.BUILDING_USE.COOKHOUSE, CFG.BUILDING_USE.FARM, CFG.BUILDING_USE.BARN].includes(
+            record.use,
+          )
+        )
+          productionBuildings.push(record);
+      }
       return {
         enabled: Boolean(this.map.hq),
         stats,
@@ -1730,6 +1857,13 @@
         regions: this.regions.model(this.squads.list.length),
         mapPackAvailable: Boolean(this.geo.pack),
         campaign: this.campaign.model(),
+        agriculture: {
+          weather: this.agriculture.weather(),
+          fields: this.agriculture.list,
+          buildings: productionBuildings,
+          controller: this.agriculture,
+          adaptations: this.adaptations,
+        },
         selectedBuilding: this.selectedBuilding,
         selectedCanAdapt: Boolean(
           this.selectedBuilding &&
@@ -1815,6 +1949,7 @@
       this.map.capture();
       this.squads.capture();
       this.citizens.capture();
+      this.agriculture.capture();
       this.fortifications.capture();
       this.defense.capture();
       this.regions.capture();
@@ -1879,6 +2014,10 @@
 
     debugPlaceFortification(x, y, kind) {
       return this.fortifications.place(x, y, kind);
+    }
+
+    debugPlaceField(x, y, kind) {
+      return this.agriculture.place(x, y, kind);
     }
 
     debugIssueAttackMove(x, y, append) {

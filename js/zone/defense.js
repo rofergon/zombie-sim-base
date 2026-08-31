@@ -19,6 +19,7 @@
       this.state = state;
       this.map = map;
       this.fortifications = fortifications;
+      this.agriculture = null;
       this.data = state.zone.defense;
       this.citizens = null;
       this.squads = null;
@@ -42,6 +43,10 @@
       this.onChanged = onChanged;
       if (this.data.report) scenario.paused = true;
       else if (this.phase === "night" && !this.data.active) this.startNight();
+    }
+
+    connectAgriculture(agriculture) {
+      this.agriculture = agriculture;
     }
 
     update(dt, t, nav) {
@@ -225,7 +230,7 @@
         return;
       }
       const building = this._targetBuilding(enemy),
-        door = building && building.shape.door,
+        door = building && building.shape && building.shape.door,
         target = door ? door.front : building;
       if (!building || !target) return;
       this.target.x = target.x === undefined ? target.cx : target.x;
@@ -271,6 +276,16 @@
           target = record;
         }
       }
+      if (this.agriculture)
+        for (let i = 0; i < this.agriculture.list.length; i++) {
+          const field = this.agriculture.list[i];
+          if (field.hp <= 0) continue;
+          const distance = Math.hypot(field.x - enemy.x, field.y - enemy.y);
+          if (distance < best) {
+            best = distance;
+            target = field;
+          }
+        }
       return target;
     }
 

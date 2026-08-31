@@ -26,6 +26,7 @@
       this.scenario = null;
       this.agents = null;
       this.onChanged = null;
+      this.agriculture = null;
       this.list = state.zone.fortifications;
       this.preview = { x: 0, y: 0, kind: 0, remove: false, valid: false };
     }
@@ -48,6 +49,10 @@
       this.onChanged = onChanged;
     }
 
+    connectAgriculture(agriculture) {
+      this.agriculture = agriculture;
+    }
+
     label(kind) {
       return LABEL[kind] || "defensa";
     }
@@ -64,7 +69,7 @@
     canAfford(kind) {
       const cost = this.cost(kind);
       if (!cost) return false;
-      for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < cost[i]) return false;
+      for (let i = 0; i < R.COUNT; i++) if (this.state.stock[i] < (cost[i] || 0)) return false;
       return true;
     }
 
@@ -111,7 +116,7 @@
       y = this.snap(y);
       if (!this.canPlace(x, y, kind)) return null;
       const cost = this.cost(kind);
-      for (let i = 0; i < R.COUNT; i++) this.state.stock[i] -= cost[i];
+      for (let i = 0; i < R.COUNT; i++) this.state.stock[i] -= cost[i] || 0;
       const maxHP = CFG.DEFENSE.HP[kind],
         record = {
           id: this.state.zone.nextFortificationId++,
@@ -135,7 +140,7 @@
       if (!record) return null;
       if (refund) {
         const cost = this.cost(record.kind);
-        for (let i = 0; i < R.COUNT; i++) this.state.stock[i] += Math.floor(cost[i] * 0.5);
+        for (let i = 0; i < R.COUNT; i++) this.state.stock[i] += Math.floor((cost[i] || 0) * 0.5);
       }
       this._remove(record);
       return record;
@@ -263,6 +268,7 @@
         )
           return false;
       }
+      if (this.agriculture && this.agriculture.overlaps(x, y, HALF)) return false;
       const samples = [-10, 10];
       for (let iy = 0; iy < samples.length; iy++)
         for (let ix = 0; ix < samples.length; ix++) {

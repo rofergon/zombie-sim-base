@@ -12,7 +12,10 @@
     AMMO: 4,
     MEDICINE: 5,
     SCIENCE: 6,
-    COUNT: 7,
+    GRAIN: 7,
+    MEAT: 8,
+    FERTILIZER: 9,
+    COUNT: 10,
   });
 
   const JOB = Object.freeze({
@@ -55,6 +58,7 @@
     SQUAD_QUARTERS: 8,
     FARM: 9,
     POWER: 10,
+    BARN: 11,
   });
 
   const TECH = Object.freeze({
@@ -62,8 +66,14 @@
     POWER: 2,
     FORTIFICATIONS: 3,
     MEDICINE: 4,
-    COUNT: 5,
+    FERTILIZATION: 5,
+    GREENHOUSES: 6,
+    EFFICIENT_COOKING: 7,
+    COUNT: 8,
   });
+
+  const FARM_KIND = Object.freeze({ FIELD: 1, VAST_FIELD: 2, COUNT: 3 });
+  const RECIPE = Object.freeze({ GRAIN: 1, MEAT: 2 });
 
   const ORDER = Object.freeze({
     MOVE: 1,
@@ -102,7 +112,7 @@
 
   ZS.ZoneConfig = Object.freeze({
     SAVE_KEY: "zs.zone",
-    SAVE_VERSION: 10,
+    SAVE_VERSION: 11,
     RESOURCE,
     JOB,
     ROLE,
@@ -116,6 +126,8 @@
     POI,
     WEAPON,
     TECH,
+    FARM_KIND,
+    RECIPE,
     FACTION,
     LAW,
     CURE_STAGE,
@@ -222,10 +234,23 @@
         8: Object.freeze([0, 16, 8, 8, 0, 0, 0]),
         9: Object.freeze([0, 14, 4, 6, 0, 0, 0]),
         10: Object.freeze([0, 12, 12, 4, 0, 0, 0]),
+        11: Object.freeze([0, 8, 3, 4, 0, 0, 0]),
       }),
       POWER_PER_GENERATOR: 4,
-      FARM_SECONDS: 8,
-      FARM_FOOD: 3,
+      FARM_SECONDS: 90,
+      FARM_GRAIN: 4,
+      FARM_FERTILIZED_GRAIN: 7,
+      FARM_FERTILIZER: 1,
+      BARN_SECONDS: 30,
+      BARN_GRAIN: 2,
+      BARN_MEAT: 2,
+      BARN_FERTILIZER: 1,
+      COOKHOUSE_SECONDS: 30,
+      COOKHOUSE_GRAIN: 2,
+      COOKHOUSE_MEAT: 2,
+      COOKHOUSE_WOOD: 1,
+      COOKHOUSE_GRAIN_FOOD: 4,
+      COOKHOUSE_MEAT_FOOD: 5,
       WORKSHOP_SECONDS: 10,
       WORKSHOP_METAL: 1,
       WORKSHOP_AMMO: 3,
@@ -233,7 +258,23 @@
       MEDBAY_HEAL: 18,
     }),
     RESEARCH: Object.freeze({
-      COSTS: Object.freeze([0, 8, 10, 12, 8]),
+      COSTS: Object.freeze([0, 8, 10, 12, 8, 6, 12, 8]),
+    }),
+    AGRICULTURE: Object.freeze({
+      GRID: 40,
+      MAX_DISTANCE_FROM_HQ: 1000,
+      CYCLE_DAYS: 24,
+      COSTS: Object.freeze({
+        1: Object.freeze([0, 4, 1, 0, 0, 0, 0, 0, 0, 0]),
+        2: Object.freeze([0, 16, 4, 0, 0, 0, 0, 0, 0, 0]),
+      }),
+      SIZE: Object.freeze([0, 80, 160]),
+      WORKERS: Object.freeze([0, 2, 8]),
+      HP: Object.freeze([0, 70, 180]),
+      SECONDS: Object.freeze([0, 90, 360]),
+      GRAIN: Object.freeze([0, 4, 16]),
+      FERTILIZED_GRAIN: Object.freeze([0, 7, 28]),
+      FERTILIZER: Object.freeze([0, 1, 4]),
     }),
     CAMPAIGN: Object.freeze({
       MAX_HISTORY: 24,
