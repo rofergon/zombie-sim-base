@@ -110,7 +110,9 @@ The existing pages remain independent regression targets:
 ### Phase 6 — active perimeter defense
 
 - A defense system panel places persistent 40 px-grid walls, human-only gates,
-  ammunition-fed watchtowers and single-use traps on valid terrain around HQ.
+  alarm-staffed watchtowers and single-use traps on valid terrain around HQ.
+  One ammunition unit supplies ten firearm shots; tower operators fall back to
+  slower bows when the armory or ammunition runs short.
   Removing a defense restores its navigation cells and refunds half its cost.
 - Walls and towers block both movement masks; gates use the existing intact-door
   mask so citizens pass while infected stop and attack the perimeter.

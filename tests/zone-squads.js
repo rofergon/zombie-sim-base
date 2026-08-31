@@ -350,6 +350,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         }
       }
       squad.inventory[ZS.ZoneConfig.RESOURCE.AMMO] = 0;
+      squad.ammoShots = 0;
       scenario.squads.issueContext(squad, target.cx, target.cy, false, target);
       const markerCanvas = document.createElement("canvas"),
         markerContext = markerCanvas.getContext("2d"),
@@ -434,6 +435,7 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       const scenario = ZS.scenario,
         squad = scenario.squads.list[0];
       squad.inventory[ZS.ZoneConfig.RESOURCE.AMMO] = 2;
+      squad.ammoShots = 0;
       scenario.setSpeed(1);
       return true;
     });
@@ -454,15 +456,13 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       return {
         remaining: scenario.map.at(id).infectedRemaining,
         ammo: squad.inventory[ZS.ZoneConfig.RESOURCE.AMMO],
-        machete: squad.members.some(
-          (cid) => scenario.citizens.at(cid).activeWeapon === ZS.ZoneConfig.WEAPON.MACHETE,
-        ),
+        shots: scenario.weapons.ammoRemaining(squad),
         living: squad.members.length,
       };
     }, encounter);
     assert.equal(fought.remaining, 0);
-    assert.equal(fought.ammo, 0);
-    assert.equal(fought.machete, true);
+    assert.ok(fought.ammo < 2);
+    assert.ok(fought.shots > 0 && fought.shots < 20);
     assert.ok(fought.living > 0);
 
     const fullTrip = await sim.page.evaluate(() => {

@@ -202,14 +202,39 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         : null;
       if (towerTarget) {
         towerTarget.zoneEnemy = true;
-        towerTarget.hp = towerTarget.maxHP = 5;
+        towerTarget.hp = towerTarget.maxHP = 100;
         ZS.Sim.agents.push(towerTarget);
+      }
+      for (let weapon = CFG.WEAPON.PISTOL; weapon < CFG.WEAPON.COUNT; weapon++)
+        scenario.weapons.armory[weapon] = 0;
+      scenario.weapons.armory[CFG.WEAPON.PISTOL] = 1;
+      scenario.defense.data.active = true;
+      const towerStaffed = fortifications.staffTowers(),
+        towerOperator = tower && scenario.citizens.at(tower.operatorId);
+      if (towerOperator) {
+        towerOperator.x = tower.x + 28;
+        towerOperator.y = tower.y;
+        tower.occupied = true;
       }
       const towerTargetHP = towerTarget && towerTarget.hp,
         towerAmmo = scenario.state.stock[R.AMMO];
-      fortifications.update(1);
+      for (let shot = 0; shot < CFG.AMMO_SHOTS_PER_UNIT; shot++) {
+        tower.attackT = 0;
+        fortifications.update(0);
+      }
       const towerDamage = towerTarget ? towerTargetHP - towerTarget.hp : 0,
         towerAmmoUsed = towerAmmo - scenario.state.stock[R.AMMO];
+      scenario.weapons.armory[CFG.WEAPON.PISTOL] = 0;
+      fortifications.staffTowers();
+      if (tower.operatorId !== null) tower.occupied = true;
+      tower.attackT = 0;
+      const bowTargetHP = towerTarget && towerTarget.hp,
+        bowAmmo = scenario.state.stock[R.AMMO];
+      fortifications.update(0);
+      const bowDamage = towerTarget ? bowTargetHP - towerTarget.hp : 0,
+        bowAmmoUsed = bowAmmo - scenario.state.stock[R.AMMO];
+      scenario.defense.data.active = false;
+      fortifications.releaseTowers();
       if (towerTarget) towerTarget.dead = true;
 
       const trapPoint = findSpot(F.TRAP, false),
@@ -280,7 +305,9 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
       const garrisoned = scenario.squads.isGarrisoned(scenario.citizens.at(squad.members[0]));
 
       scenario.state.minute = CFG.CLOCK.NIGHT - 30;
-      const warning = scenario.defense.warning();
+      scenario.defense.update(0, performance.now() / 1000, nav);
+      const warning = scenario.defense.warning(),
+        alertTowerStaffed = tower.operatorId !== null;
       scenario.state.save();
       return {
         placed: Boolean(wall && replacedGate && tower && replacementTrap),
@@ -290,6 +317,11 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
         refund,
         towerDamage,
         towerAmmoUsed,
+        towerStaffed,
+        bowDamage,
+        bowAmmoUsed,
+        alertTowerStaffed,
+        towerCadence: CFG.DEFENSE.TOWER_SECONDS,
         trapTriggered,
         wallDamage: wall ? wallHP - wall.hp : 0,
         counts: fortifications.counts(),
@@ -323,6 +355,11 @@ const { assertNoErrors, launch, openSim, pageUrl } = require("./browser");
     assert.equal(activeDefense.refund, 2);
     assert.ok(activeDefense.towerDamage > 0);
     assert.equal(activeDefense.towerAmmoUsed, 1);
+    assert.equal(activeDefense.towerStaffed, 1);
+    assert.equal(activeDefense.bowDamage, 1);
+    assert.equal(activeDefense.bowAmmoUsed, 0);
+    assert.equal(activeDefense.alertTowerStaffed, true);
+    assert.equal(activeDefense.towerCadence, 0.45);
     assert.equal(activeDefense.trapTriggered, true);
     assert.ok(activeDefense.wallDamage > 0);
     assert.deepEqual(activeDefense.counts.slice(1), [1, 1, 1, 1]);

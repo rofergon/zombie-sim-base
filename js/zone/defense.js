@@ -33,6 +33,7 @@
       this.spawnT = 0;
       this.target = { x: 0, y: 0 };
       this.warningData = { active: false, minutes: 0, direction: "norte", directionId: 0 };
+      this.alertStaffed = false;
     }
 
     connect(citizens, squads, scenario, agents, onChanged) {
@@ -58,6 +59,14 @@
         else if (previous === "night" && phase !== "night" && this.data.active)
           this.endNight(false);
       }
+      const warning = this.warning();
+      if (warning.active && !this.alertStaffed) {
+        this.alertStaffed = true;
+        this.fortifications.staffTowers();
+      } else if (!warning.active && !this.data.active && this.alertStaffed) {
+        this.alertStaffed = false;
+        this.fortifications.releaseTowers();
+      }
       if (!this.data.active || phase !== "night") return;
       this.spawnT -= dt;
       while (this.spawnRemaining > 0 && this.spawnT <= 0) {
@@ -73,6 +82,7 @@
     startNight() {
       if (!this.map.hq || this.data.lastStartedDay === this.state.day) return false;
       this.data.lastStartedDay = this.state.day;
+      this.alertStaffed = true;
       this.data.active = true;
       this.data.spawned = 0;
       this.data.kills = 0;
@@ -400,6 +410,7 @@
     endNight(cleared) {
       if (!this.data.active) return false;
       this.data.active = false;
+      this.alertStaffed = false;
       this.data.lastCompletedDay = this.data.lastStartedDay;
       this.spawnRemaining = 0;
       this.data.pending = 0;

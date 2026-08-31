@@ -127,10 +127,7 @@
     }
 
     prepareSquad(squad) {
-      squad.ammoShots = Math.max(
-        0,
-        Math.min(CFG.AMMO_SHOTS_PER_UNIT - 1, squad.ammoShots | 0),
-      );
+      squad.ammoShots = Math.max(0, Math.min(CFG.AMMO_SHOTS_PER_UNIT - 1, squad.ammoShots | 0));
       if (!Array.isArray(squad.spareWeapons)) squad.spareWeapons = emptyWeapons();
       else
         for (let id = 0; id < W.COUNT; id++)

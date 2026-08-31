@@ -1469,7 +1469,7 @@
           "",
           "Bloquea a todos y obliga a la horda a abrir una brecha.",
           "Permite el paso de habitantes, pero detiene infectados.",
-          "Dispara automáticamente y consume munición del asentamiento.",
+          "La ocupa un habitante durante la alarma; usa un arma disponible o un arco.",
           "Inflige daño al primer grupo infectado que la pisa.",
         ];
       let html = model.defense.warning.active
@@ -1835,7 +1835,8 @@
         supplies.className = "zone-squad-supplies";
         supplies.textContent =
           "munición " +
-          squad.inventory[R.AMMO] +
+          (squad.inventory[R.AMMO] * CFG.AMMO_SHOTS_PER_UNIT + squad.ammoShots) +
+          " disparos" +
           " · carga " +
           squads.inventoryTotal(squad) +
           "/" +
@@ -2245,7 +2246,7 @@
           members += squad.members.length;
           cargo += squads.inventoryTotal(squad);
           capacity += squad.capacity;
-          ammo += squad.inventory[R.AMMO];
+          ammo += squad.inventory[R.AMMO] * CFG.AMMO_SHOTS_PER_UNIT + squad.ammoShots;
           medicine += squad.inventory[R.MEDICINE];
           for (let resource = 0; resource < R.COUNT; resource++)
             inventory[resource] += squad.inventory[resource];
@@ -2268,6 +2269,7 @@
           capacity +
           " · munición " +
           ammo +
+          " disparos" +
           " · botiquines " +
           medicine +
           "\nRMB actuar · V saquear zona · Shift+RMB añade órdenes · Ctrl+1–9 grupos";

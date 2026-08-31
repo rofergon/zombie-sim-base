@@ -51,7 +51,8 @@
       this.scenario = scenario;
       this.agents = agents;
       this.onChanged = onChanged;
-      if (scenario.defense && scenario.defense.data.active) this.staffTowers();
+      if (scenario.defense && (scenario.defense.data.active || scenario.defense.alertStaffed))
+        this.staffTowers();
     }
 
     connectAgriculture(agriculture) {
@@ -140,7 +141,11 @@
         };
       this.list.push(record);
       this._claimCells(record);
-      if (kind === F.TOWER && this.scenario.defense.data.active) this.staffTowers();
+      if (
+        kind === F.TOWER &&
+        (this.scenario.defense.data.active || this.scenario.defense.alertStaffed)
+      )
+        this.staffTowers();
       if (this.onChanged) this.onChanged();
       return record;
     }
@@ -263,7 +268,12 @@
     }
 
     updateOperator(citizen, dt, t, nav) {
-      if (!citizen || citizen.towerId === null || !this.scenario.defense.data.active) return false;
+      if (
+        !citizen ||
+        citizen.towerId === null ||
+        (!this.scenario.defense.data.active && !this.scenario.defense.alertStaffed)
+      )
+        return false;
       let tower = null;
       for (let i = 0; i < this.list.length; i++)
         if (this.list[i].id === citizen.towerId) {
