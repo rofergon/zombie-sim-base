@@ -23,6 +23,7 @@
       this.state = new ZS.ZoneState({ fresh: params.get("fresh") === "1" });
       this.geo = new ZS.ZoneGeo(this.state, params);
       this.map = new ZS.ZoneMap(this.state, this.geo);
+      this.weapons = new ZS.ZoneWeapons(this.state, this.map);
       this.orders = new ZS.ZoneOrders();
       this.citizens = new ZS.ZoneCitizens(this.state, this.map);
       this.tasks = new ZS.ZoneTasks(this.state, this.map);
@@ -30,6 +31,9 @@
       this.squads = new ZS.ZoneSquads(this.state, this.map);
       this.scavenge = new ZS.ZoneScavenge(this.state, this.map);
       this.adaptations = new ZS.ZoneAdaptations(this.state, this.map);
+      this.logistics = new ZS.ZoneLogistics(this.state, this.map, this.adaptations);
+      this.vehicles = new ZS.ZoneVehicles(this.state, this.map);
+      this.threats = new ZS.ZoneThreats(this.state, this.map);
       this.agriculture = new ZS.ZoneAgriculture(this.state, this.map);
       this.fortifications = new ZS.ZoneFortifications(this.state, this.map);
       this.defense = new ZS.ZoneDefense(this.state, this.map, this.fortifications);
@@ -107,6 +111,7 @@
         workMax: (kind, delta) => this.adjustWorkMaximum(kind, delta),
         workMaxAll: (kind) => this.maximizeWork(kind),
         createSquad: () => this.createSquad(),
+        equipWeapon: (squadId, citizenId, weapon) => this.equipWeapon(squadId, citizenId, weapon),
         returnHQ: () => this.returnSelectedSquad(),
         patrol: () => this.patrolSelectedSquad(),
         disband: () => this.disbandSelectedSquad(),
@@ -202,6 +207,8 @@
       this.world = world;
       this.nav = nav;
       this.map.prepare(world, nav);
+      this.vehicles.prepare();
+      this.threats.prepare();
       this.gathering.prepare(world, nav);
       this.map.onDemolished = (record) => {
         if (this.selectedBuilding === record) this.selectedBuilding = null;
@@ -231,9 +238,22 @@
       this.citizens.connect(this.tasks, this.squads, () => this._markUI());
       this.tasks.connect(this.citizens, () => this._markUI());
       this.squads.connect(this.citizens, this.scavenge, this.agents, () => this._markUI());
+      this.weapons.connect(this.citizens, this.squads, () => this._markUI());
+      this.squads.connectWeapons(this.weapons);
+      this.squads.connectVehicles(this.vehicles);
+      this.squads.connectLogistics(this.logistics);
+      this.vehicles.connect(this.squads, this.citizens, () => this._markUI());
+      this.threats.connect(
+        this.citizens,
+        this.squads,
+        this,
+        this.agents,
+        () => this._markUI(),
+      );
       this.scavenge.connect(this.citizens, this.squads, this, this.agents, () => this._markUI());
       this.tasks.connectAdaptations(this.adaptations);
       this.tasks.connectAgriculture(this.agriculture);
+      this.tasks.connectLogistics(this.logistics);
       this.gathering.connect(this.tasks, () => this._markUI());
       this.adaptations.connect(
         this.citizens,
@@ -245,9 +265,11 @@
           this._markUI();
         },
       );
+      this.adaptations.connectLogistics(this.logistics);
       this.agriculture.connect(this.tasks, this.citizens, this.fortifications, () =>
         this._markUI(),
       );
+      this.agriculture.connectLogistics(this.logistics);
       this.fortifications.connectAgriculture(this.agriculture);
       this.defense.connectAgriculture(this.agriculture);
       this.citizens.connectAdaptations(this.adaptations);
@@ -257,7 +279,12 @@
         this._refreshSettlement();
       });
       this.fortifications.connect(this, this.agents, () => this._markUI());
-      this.regions.connect(() => this._markUI());
+      this.regions.connect(
+        this.squads,
+        this.citizens,
+        this.vehicles,
+        () => this._markUI(),
+      );
       this.citizens.connectCampaign(this.campaign);
       this.campaign.connect(this.citizens, this.adaptations, this.defense, this.regions, this, () =>
         this._markUI(),
@@ -275,8 +302,17 @@
       this.agriculture.update(dt);
       this.defense.update(dt, performance.now() / 1000, this.nav);
       this.fortifications.update(dt);
+      this.vehicles.update(dt);
+      this.threats.update(dt);
       this.regions.update(dt);
       this.campaign.update(dt);
+      const arrivals = this.citizens.updateImmigration();
+      if (arrivals)
+        this.ui.toast(
+          arrivals === 1
+            ? "Una superviviente se ha unido al asentamiento."
+            : arrivals + " supervivientes se han unido al asentamiento.",
+        );
       this.saveT += dt;
       if (this.saveT >= 10) {
         this.saveT = 0;
@@ -305,6 +341,11 @@
         else this.scavenge.updateEnemy(agent, dt, t, nav);
         return;
       }
+      if (agent.away) {
+        agent.vx = agent.vy = 0;
+        agent.wantMove = false;
+        return;
+      }
       this.citizens.updateNeeds(agent, dt);
       if (agent.role === CFG.ROLE.SQUAD) this.squads.update(agent, dt, t, nav);
       else this.tasks.updateWorker(agent, dt, t, nav);
@@ -329,13 +370,15 @@
 
     maxSpeed(agent) {
       const squad = agent.squadId !== null ? this.squads.at(agent.squadId) : null;
+      if (agent.away) return 0;
       return agent.zoneEnemy
         ? agent.zoneHorde
           ? this.defense.enemySpeed(agent)
           : 72
         : CFG.AGENT.SPEED *
             (agent.squadRank > 0 ? 1.18 : 1) *
-            (squad && squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1);
+            (squad && squad.retreating ? CFG.DEFENSE.RETREAT_SPEED_MULTIPLIER : 1) *
+            this.vehicles.speedMultiplier(squad);
     }
 
     makeAgent(x, y, st) {
@@ -358,6 +401,7 @@
       this.gathering.drawGround(c);
       this.agriculture.drawGround(c);
       this.fortifications.drawGround(c);
+      this.weapons.drawGround(c);
       const minute = this.state.minute;
       let alpha = 0;
       if (minute >= CFG.CLOCK.NIGHT || minute < CFG.CLOCK.DAWN) alpha = 0.3;
@@ -481,7 +525,15 @@
     }
 
     draw(c, agent, t) {
+      if (agent.away) return;
       ZS.ScenarioZombie.prototype.draw.call(this, c, agent, t);
+      if (agent.zoneRaider) {
+        c.save();
+        c.strokeStyle = "rgba(126,58,43,0.92)";
+        c.lineWidth = 1.6;
+        ZS.wcirc(c, agent.x, agent.y - 4, 12, agent.seed + 1871, 1);
+        c.restore();
+      }
       if (!agent.selected) return;
       c.save();
       c.strokeStyle = "rgba(79,105,55,0.95)";
@@ -500,6 +552,8 @@
       this.agriculture.drawOverlay(c, this.mapLayers.production);
       this.map.drawHeadquartersFlag(c, zoom);
       this.gathering.drawOverlay(c, this.selectedGatherJob, zoom);
+      this.vehicles.drawOverlay(c);
+      this.threats.drawOverlay(c, this.mapLayers.threats);
       this._drawSelectedBuilding(c, zoom);
       for (let i = 0; i < this.selected.length; i++) {
         const agent = this.selected[i];
@@ -547,7 +601,14 @@
         for (let i = 0; i < this.squads.list.length; i++) {
           const leader = this.citizens.at(this.squads.list[i].members[0]);
           if (leader && !leader.dead)
-            ZS.wcirc(c, leader.x, leader.y, CFG.SQUAD.FIRE_RANGE, leader.seed + 1701, 1.4);
+            ZS.wcirc(
+              c,
+              leader.x,
+              leader.y,
+              this.weapons.squadRange(this.squads.list[i]),
+              leader.seed + 1701,
+              1.4,
+            );
         }
         c.setLineDash(SOLID_LINE);
       }
@@ -1015,6 +1076,18 @@
       return true;
     }
 
+    equipWeapon(squadId, citizenId, weapon) {
+      const squad = this.squads.at(squadId),
+        equipped = this.weapons.equipFromArmory(squad, citizenId, weapon);
+      this.ui.toast(
+        equipped
+          ? "Equipo actualizado desde la armería del CG."
+          : "La patrulla debe estar dentro del CG y el arma debe estar disponible.",
+      );
+      this._markUI();
+      return equipped;
+    }
+
     returnSelectedSquad() {
       const squads = this._selectedSquads();
       let count = 0;
@@ -1422,11 +1495,18 @@
     }
 
     startExpedition(id) {
-      const started = this.regions.start(id, this.squads.list.length);
+      const selected = this._selectedSquad(),
+        started = this.regions.start(id, selected ? selected.id : null),
+        expedition = this.state.zone.expedition;
       this.ui.toast(
         started
-          ? "La expedición ha partido. Regresará en unas tres horas."
-          : "Hace falta una patrulla, 6 de comida, 2 de munición y una ruta conectada.",
+          ? "La patrulla " +
+              expedition.squadId +
+              (expedition.vehicleId === null ? " ha partido a pie" : " ha partido en vehículo") +
+              ". Regresará en " +
+              expedition.duration +
+              " min."
+          : "Hace falta una patrulla en el CG, 6 de comida, 2 de munición y una ruta conectada.",
       );
       this._markUI();
       return started;
@@ -1450,7 +1530,10 @@
         this.ui.toast("Selecciona una o más escuadras primero.");
         return false;
       }
-      const building = this.map.buildingAt(x, y);
+      const cam = ZS.debug && ZS.debug.cam,
+        vehicle = this.vehicles.atPoint(x, y, 34 / Math.max(0.5, cam ? cam.zoom : 1)),
+        drop = vehicle ? null : this.weapons.atPoint(x, y, cam ? cam.zoom : 1),
+        building = drop || vehicle ? null : this.map.buildingAt(x, y);
       let count = 0;
       for (let i = 0; i < squads.length; i++) {
         let tx = x,
@@ -1460,7 +1543,12 @@
           tx += Math.cos(angle) * 28;
           ty += Math.sin(angle) * 28;
         }
-        if (this.squads.issueContext(squads[i], tx, ty, append, building)) count++;
+        if (
+          (vehicle && this.squads.issueBoard(squads[i], vehicle, append)) ||
+          (drop && this.squads.issuePickup(squads[i], drop, append)) ||
+          (!drop && !vehicle && this.squads.issueContext(squads[i], tx, ty, append, building))
+        )
+          count++;
       }
       if (!count) return false;
       this.orderPing.x = x;
@@ -1469,23 +1557,33 @@
       this.orderPing.seed++;
       if (ZS.sound) ZS.sound.event("order", x, y);
       this.ui.toast(
-        building
-          ? building === this.map.hq ||
-            building.looted ||
-            building.use !== CFG.BUILDING_USE.ABANDONED
-            ? count === 1
-              ? "Orden de guarnición emitida."
-              : count + " escuadras enviadas a guarnecer."
-            : count === 1
-              ? "Orden de saqueo emitida."
-              : count + " escuadras enviadas a saquear."
-          : append
-            ? count === 1
-              ? "Orden puesta en cola."
-              : "Órdenes en cola para " + count + " escuadras."
-            : count === 1
-              ? "Orden de movimiento emitida."
-              : count + " escuadras en movimiento.",
+        vehicle
+          ? count === 1
+            ? vehicle.recovered
+              ? "La patrulla se dirige a su vehículo."
+              : "Orden de recuperar el vehículo emitida."
+            : count + " patrullas intentarán recuperar el vehículo."
+          : drop
+          ? count === 1
+            ? "Orden de recuperar el equipo emitida."
+            : count + " escuadras se dirigen al equipo abandonado."
+          : building
+            ? building === this.map.hq ||
+              building.looted ||
+              building.use !== CFG.BUILDING_USE.ABANDONED
+              ? count === 1
+                ? "Orden de guarnición emitida."
+                : count + " escuadras enviadas a guarnecer."
+              : count === 1
+                ? "Orden de saqueo emitida."
+                : count + " escuadras enviadas a saquear."
+            : append
+              ? count === 1
+                ? "Orden puesta en cola."
+                : "Órdenes en cola para " + count + " escuadras."
+              : count === 1
+                ? "Orden de movimiento emitida."
+                : count + " escuadras en movimiento.",
       );
       this._markUI();
       return true;
@@ -1705,6 +1803,7 @@
         if (
           !agent.zoneCitizen ||
           agent.dead ||
+          agent.away ||
           agent.x < x0 ||
           agent.x > x1 ||
           agent.y < y0 ||
@@ -1750,7 +1849,7 @@
 
     _pruneSelection() {
       for (let i = this.selected.length - 1; i >= 0; i--)
-        if (this.selected[i].dead || !this.selected[i].zoneCitizen) {
+        if (this.selected[i].dead || this.selected[i].away || !this.selected[i].zoneCitizen) {
           this.selected[i].selected = false;
           this.selected.splice(i, 1);
           this.uiDirty = true;
@@ -1768,7 +1867,7 @@
         const id = this.selected[i].squadId;
         if (id === null) continue;
         const squad = this.squads.at(id);
-        if (squad && !result.includes(squad)) result.push(squad);
+        if (squad && !squad.away && !result.includes(squad)) result.push(squad);
       }
       return result;
     }
@@ -1875,8 +1974,10 @@
           window.innerWidth,
           window.innerHeight,
         ),
-        building = this.map.buildingAt(point.x, point.y),
+        vehicle = this.vehicles.atPoint(point.x, point.y, 34 / Math.max(0.5, cam.zoom)),
+        building = vehicle ? null : this.map.buildingAt(point.x, point.y),
         gatherJob = this.gathering.atPoint(point.x, point.y, cam.zoom),
+        drop = this.weapons.atPoint(point.x, point.y, cam.zoom),
         squads = this._selectedSquads();
       this.hoverBuilding = building;
       let hint = "Clic izq. seleccionar";
@@ -1904,12 +2005,33 @@
       else if (this.commandMode === "garrison")
         hint = building ? "Clic para guarnecer este edificio" : "Elige un edificio despejado";
       else if (squads.length)
-        hint = building
-          ? building === this.map.hq || building.looted
-            ? "Clic der. guarnecer · Shift pone en cola"
-            : "Clic der. saquear · Shift pone en cola"
-          : "Clic der. mover · Shift pone en cola";
-      else if (gatherJob)
+        hint = vehicle
+          ? vehicle.recovered
+            ? "Clic der. usar vehículo · combustible " + vehicle.fuel.toFixed(1)
+            : "Clic der. recuperar vehículo · combustible " + vehicle.fuel.toFixed(1)
+          : drop
+          ? "Clic der. recuperar armas y suministros · Shift pone en cola"
+          : building
+            ? building === this.map.hq || building.looted
+              ? "Clic der. guarnecer · Shift pone en cola"
+              : "Clic der. saquear · Shift pone en cola"
+            : "Clic der. mover · Shift pone en cola";
+      else if (vehicle)
+        hint =
+          (vehicle.recovered ? "Vehículo recuperado" : "Vehículo abandonado") +
+          " · estado " +
+          Math.round((vehicle.hp / vehicle.maxHP) * 100) +
+          "% · combustible " +
+          vehicle.fuel.toFixed(1);
+      else if (drop) {
+        const contents = this.weapons.contents(drop);
+        hint =
+          "Equipo abandonado · " +
+          contents.weapons +
+          " armas · " +
+          contents.resources +
+          " suministros";
+      } else if (gatherJob)
         hint =
           "Clic para gestionar área de " +
           this.gathering.label(gatherJob.resource) +
@@ -2101,6 +2223,10 @@
           weapon: citizen.weapon,
           name: citizen.name,
           arrivalDay: citizen.arrivalDay,
+          infection: citizen.infection,
+          skills: citizen.skills,
+          trait: citizen.trait,
+          away: citizen.away,
         });
       }
       for (let use = CFG.BUILDING_USE.SHELTER; use <= CFG.BUILDING_USE.BARN; use++)
@@ -2135,7 +2261,10 @@
         gathering: this.gathering.model(),
         fortificationCounts: this.fortifications.counts(),
         defense: this.defense.status(),
-        regions: this.regions.model(this.squads.list.length),
+        regions: this.regions.model(this._selectedSquad() ? this._selectedSquad().id : null),
+        vehicles: this.vehicles.model(),
+        threats: this.threats.model(),
+        logistics: { stored: this.logistics.stored(), room: this.logistics.room() },
         mapPackAvailable: Boolean(this.geo.pack),
         campaign: this.campaign.model(),
         agriculture: {
@@ -2204,7 +2333,14 @@
         let pending = 0;
         for (let i = 0; i < squads.length; i++)
           pending += Math.max(0, squads[i].orders.length - squads[i].orderIndex);
-        this.ui.showAgents(this.selected, squads, pending, this.citizens, this.squads);
+        this.ui.showAgents(
+          this.selected,
+          squads,
+          pending,
+          this.citizens,
+          this.squads,
+          this.weapons,
+        );
       } else if (this.selectedBuilding) {
         this.ui.showBuilding(
           this.selectedBuilding,
@@ -2228,6 +2364,7 @@
     _capture() {
       if (!this.map.records.length) return;
       this.map.capture();
+      this.weapons.capture();
       this.squads.capture();
       this.citizens.capture();
       this.agriculture.capture();

@@ -932,6 +932,37 @@ body {
   vertical-align: middle;
 }
 
+.zone-weapon-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 26px;
+  background-image: url("../assets/zone/weapons/weapon-atlas.png");
+  background-repeat: no-repeat;
+  background-size: 500% auto;
+  vertical-align: middle;
+}
+
+.zw-machete {
+  background-position: 0% 50%;
+}
+
+.zw-pistol {
+  background-position: 25% 50%;
+}
+
+.zw-rifle {
+  background-position: 50% 50%;
+}
+
+.zw-shotgun {
+  background-position: 75% 50%;
+}
+
+.zw-sniper {
+  background-position: 100% 50%;
+}
+
 .zi-pop {
   background-image: url("../assets/zone/icons/population.png");
 }
@@ -1348,6 +1379,33 @@ body {
   font-size: 8px;
   line-height: 1.2;
   opacity: 0.65;
+}
+
+.zone-weapon-control {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px;
+}
+
+.zone-weapon-control .zone-weapon-icon {
+  width: 32px;
+  height: 22px;
+}
+
+.zone-weapon-control select {
+  min-width: 0;
+  width: 100%;
+  padding: 2px 1px;
+  border: 1px solid rgba(61, 52, 43, 0.28);
+  border-radius: 2px;
+  color: #3d342b;
+  background: rgba(246, 241, 227, 0.88);
+  font: 700 7px/1.15 var(--zone-ui);
+}
+
+.zone-weapon-control select:disabled {
+  opacity: 0.62;
 }
 
 .zone-main-dock {

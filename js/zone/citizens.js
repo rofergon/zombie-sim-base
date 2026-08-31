@@ -67,6 +67,7 @@
       this.adaptations = null;
       this.campaign = null;
       this.makeAgent = null;
+      this.lastArrivalCount = 0;
     }
 
     connect(tasks, squads, onChanged) {
@@ -107,6 +108,8 @@
       this.state.stock[R.BRICK] = CFG.STOCK.BRICK;
       this.state.stock[R.AMMO] = CFG.STOCK.AMMO;
       this.state.stock[R.MEDICINE] = CFG.STOCK.MEDICINE;
+      this.state.stock[R.FUEL] = CFG.STOCK.FUEL;
+      this.state.zone.lastImmigrationDay = this.state.day;
       const door = this.map.hq.shape.door,
         origin = door ? door.inner : this.map.hq,
         cols = 4;
@@ -130,6 +133,11 @@
           carry: emptyResources(),
           squadId: null,
           weapon: i === 0 ? CFG.WEAPON.RIFLE : i < 3 ? CFG.WEAPON.PISTOL : CFG.WEAPON.MACHETE,
+          infection: 0,
+          skills: [i < 4 ? 1 : 0, 0, i >= 4 ? 1 : 0],
+          skillXP: [0, 0, 0],
+          trait: 1 + ((ZS.hash(this.state.seed + id * 607) * 3) | 0),
+          away: false,
         });
         agents.push(agent);
         this.byId[id] = agent;
@@ -158,6 +166,16 @@
       agent.attackT = 0;
       agent.name = raw.name || this._nameFor(raw.id);
       agent.arrivalDay = Math.max(1, raw.arrivalDay || 1);
+      agent.infection = Math.max(0, Math.min(CFG.CITIZEN.INFECTION_MAX, raw.infection || 0));
+      agent.skills = Array.from({ length: CFG.SKILL.COUNT }, (_, id) =>
+        Math.max(0, Math.min(10, (raw.skills && raw.skills[id]) || 0)),
+      );
+      agent.skillXP = Array.from({ length: CFG.SKILL.COUNT }, (_, id) =>
+        Math.max(0, (raw.skillXP && raw.skillXP[id]) || 0),
+      );
+      agent.trait = Math.max(0, Math.min(3, raw.trait || 0));
+      agent.away = Boolean(raw.away);
+      agent.logisticsBuildingId = null;
     }
 
     _nameFor(id) {
@@ -198,6 +216,11 @@
           weapon: CFG.WEAPON.MACHETE,
           name: null,
           arrivalDay: this.state.day,
+          infection: Math.max(0, opts.infection || 0),
+          skills: Array.isArray(opts.skills) ? opts.skills : [0, 0, 0],
+          skillXP: [0, 0, 0],
+          trait: 1 + ((ZS.hash(this.state.seed + id * 607) * 3) | 0),
+          away: false,
         });
         this.agents.push(agent);
         this.byId[id] = agent;
@@ -219,7 +242,7 @@
     }
 
     updateNeeds(agent, dt) {
-      if (!agent.zoneCitizen || agent.dead) return;
+      if (!agent.zoneCitizen || agent.dead || agent.away) return;
       agent.hunger = Math.min(100, agent.hunger + dt * CFG.CITIZEN.HUNGER_PER_SECOND);
       if (agent.hunger >= CFG.CITIZEN.FOOD_AT_HUNGER && this.state.stock[R.FOOD] > 0) {
         this.state.stock[R.FOOD]--;
@@ -239,6 +262,69 @@
       if (this.adaptations && this.state.phase() === "night" && this.adaptations.overcrowded)
         agent.moral = Math.max(0, agent.moral - dt * 0.025);
       if (this.campaign) this.campaign.updateCitizen(agent, dt);
+      if (agent.infection > 0) {
+        const building = this.map.at(agent.bld),
+          treated = building && building.use === CFG.BUILDING_USE.MEDBAY && building.powered,
+          formula =
+            this.campaign && this.campaign.data.cureStage >= CFG.CURE_STAGE.FORMULA ? 0.16 : 0;
+        agent.infection += dt * (treated ? -CFG.CITIZEN.INFECTION_DECAY_MEDBAY : 0.004 - formula);
+        agent.infection = Math.max(0, Math.min(CFG.CITIZEN.INFECTION_MAX, agent.infection));
+        if (agent.infection >= CFG.CITIZEN.INFECTION_MAX) this.kill(agent);
+      }
+    }
+
+    expose(agent, amount) {
+      if (!agent || agent.dead || agent.away || amount <= 0) return 0;
+      const resistance = agent.trait === 2 ? 0.7 : 1,
+        previous = agent.infection;
+      agent.infection = Math.min(CFG.CITIZEN.INFECTION_MAX, agent.infection + amount * resistance);
+      if (this.onChanged && Math.floor(previous / 10) !== Math.floor(agent.infection / 10))
+        this.onChanged();
+      return agent.infection - previous;
+    }
+
+    addSkill(agent, kind, amount) {
+      if (!agent || agent.dead || kind < 0 || kind >= CFG.SKILL.COUNT || amount <= 0) return;
+      agent.skillXP[kind] += amount;
+      while (agent.skillXP[kind] >= CFG.CITIZEN.SKILL_XP_PER_LEVEL && agent.skills[kind] < 10) {
+        agent.skillXP[kind] -= CFG.CITIZEN.SKILL_XP_PER_LEVEL;
+        agent.skills[kind]++;
+        if (this.onChanged) this.onChanged();
+      }
+    }
+
+    skillMultiplier(agent, kind) {
+      if (!agent || !agent.skills) return 1;
+      const level = agent.skills[kind] || 0,
+        traitBonus =
+          (kind === CFG.SKILL.COMBAT && agent.trait === 1) ||
+          (kind === CFG.SKILL.LABOR && agent.trait === 3)
+            ? 0.1
+            : 0;
+      return 1 + level * 0.06 + traitBonus;
+    }
+
+    updateImmigration() {
+      this.lastArrivalCount = 0;
+      if (
+        !this.map.hq ||
+        this.state.day - this.state.zone.lastImmigrationDay < CFG.CITIZEN.IMMIGRATION_DAYS
+      )
+        return 0;
+      this.state.zone.lastImmigrationDay = this.state.day;
+      const stats = this.stats(),
+        housing = this.adaptations ? this.adaptations.housingCapacity() : stats.population;
+      if (
+        housing <= stats.population ||
+        stats.moral < 55 ||
+        this.state.stock[R.FOOD] < stats.population * 3 ||
+        (this.campaign && this.campaign.data.law === CFG.LAW.QUARANTINE)
+      )
+        return 0;
+      const room = housing - stats.population,
+        count = Math.min(room, 1 + ((ZS.hash(this.state.seed + this.state.day * 811) * 3) | 0));
+      this.lastArrivalCount = this.recruit(count, { moral: 64, hunger: 20 }).length;
+      return this.lastArrivalCount;
     }
 
     kill(agent) {
@@ -272,22 +358,39 @@
       return total;
     }
 
+    carryCapacity(agent) {
+      const labor = agent && agent.skills ? agent.skills[CFG.SKILL.LABOR] || 0 : 0,
+        trait = agent && agent.trait === 3 ? 2 : 0;
+      return CFG.CITIZEN.CARRY_CAPACITY + Math.floor(labor / 2) + trait;
+    }
+
     stats() {
       let population = 0,
         free = 0,
         assigned = 0,
-        moral = 0;
+        moral = 0,
+        infected = 0,
+        away = 0;
       for (let i = 0; i < this.byId.length; i++) {
         const a = this.byId[i];
         if (!a || a.dead) continue;
         population++;
         moral += a.moral;
+        if (a.infection > 0) infected++;
+        if (a.away) away++;
         if (a.role === CFG.ROLE.WORKER) {
           if (a.jobId === null) free++;
           else assigned++;
         }
       }
-      return { population, free, assigned, moral: population ? moral / population : 0 };
+      return {
+        population,
+        free,
+        assigned,
+        infected,
+        away,
+        moral: population ? moral / population : 0,
+      };
     }
 
     capture() {
@@ -311,6 +414,11 @@
           weapon: a.weapon,
           name: a.name,
           arrivalDay: a.arrivalDay,
+          infection: a.infection,
+          skills: a.skills.slice(),
+          skillXP: a.skillXP.slice(),
+          trait: a.trait,
+          away: a.away,
         });
       }
       this.state.zone.citizens = out;
