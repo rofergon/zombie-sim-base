@@ -26,6 +26,7 @@
       this.orders = new ZS.ZoneOrders();
       this.citizens = new ZS.ZoneCitizens(this.state, this.map);
       this.tasks = new ZS.ZoneTasks(this.state, this.map);
+      this.gathering = new ZS.ZoneGathering(this.state, this.map);
       this.squads = new ZS.ZoneSquads(this.state, this.map);
       this.scavenge = new ZS.ZoneScavenge(this.state, this.map);
       this.adaptations = new ZS.ZoneAdaptations(this.state, this.map);
@@ -44,6 +45,7 @@
       this.nav = null;
       this.selected = [];
       this.selectedBuilding = null;
+      this.selectedGatherJob = null;
       this.squadRosterOpen = false;
       this.hoverBuilding = null;
       this.spacePan = false;
@@ -110,6 +112,11 @@
         repairBuilding: () => this.repairSelectedBuilding(),
         research: (tech) => this.research(tech),
         researchStaff: (id, delta) => this.setResearchStaff(id, delta),
+        armGather: (resource) => this.armGather(resource),
+        gatherStaff: (id, delta) => this.setGatherStaff(id, delta),
+        gatherPriority: (id) => this.cycleGatherPriority(id),
+        gatherCancel: (id) => this.cancelGatherArea(id),
+        gatherFocus: (id) => this.focusGatherArea(id),
         selectSquad: (id, additive) => this.selectSquad(id, additive),
         focusSquad: (id) => this.focusSquad(id),
         toggleRoster: () => this.toggleSquadRoster(),
@@ -192,6 +199,7 @@
       this.world = world;
       this.nav = nav;
       this.map.prepare(world, nav);
+      this.gathering.prepare(world, nav);
       this.map.onDemolished = (record) => {
         if (this.selectedBuilding === record) this.selectedBuilding = null;
         if (this.hoverBuilding === record) this.hoverBuilding = null;
@@ -223,6 +231,7 @@
       this.scavenge.connect(this.citizens, this.squads, this, this.agents, () => this._markUI());
       this.tasks.connectAdaptations(this.adaptations);
       this.tasks.connectAgriculture(this.agriculture);
+      this.gathering.connect(this.tasks, () => this._markUI());
       this.adaptations.connect(
         this.citizens,
         this.tasks,
@@ -342,6 +351,7 @@
 
     drawGround(c, world) {
       this.map.drawGround(c);
+      this.gathering.drawGround(c);
       this.agriculture.drawGround(c);
       this.fortifications.drawGround(c);
       const minute = this.state.minute;
@@ -436,6 +446,7 @@
       this.fortifications.drawOverlay(c, this.mapLayers.defenses);
       this.agriculture.drawOverlay(c, this.mapLayers.production);
       this.map.drawHeadquartersFlag(c, zoom);
+      this.gathering.drawOverlay(c, this.selectedGatherJob, zoom);
       this._drawSelectedBuilding(c, zoom);
       for (let i = 0; i < this.selected.length; i++) {
         const agent = this.selected[i];
@@ -492,17 +503,32 @@
           y = Math.min(this.drag.y0, this.drag.y1),
           w = Math.abs(this.drag.x1 - this.drag.x0),
           h = Math.abs(this.drag.y1 - this.drag.y0);
-        const area = this.drag.kind === "area";
-        c.strokeStyle = area ? "rgba(79,105,55,0.88)" : "rgba(61,52,43,0.75)";
-        c.fillStyle = area ? "rgba(112,148,72,0.14)" : "rgba(112,148,72,0.08)";
+        const area = this.drag.kind === "area",
+          gather = this.drag.kind === "gather",
+          workArea = area || gather;
+        c.strokeStyle = gather
+          ? "rgba(55,104,116,0.92)"
+          : area
+            ? "rgba(79,105,55,0.88)"
+            : "rgba(61,52,43,0.75)";
+        c.fillStyle = gather
+          ? "rgba(79,151,166,0.16)"
+          : area
+            ? "rgba(112,148,72,0.14)"
+            : "rgba(112,148,72,0.08)";
         c.fillRect(x, y, w, h);
         this._drawSelectionRect(c, x, y, w, h, 1, zoom);
-        if (area) {
+        if (workArea) {
           c.fillStyle = "rgba(61,52,43,0.88)";
           c.font = 'bold 12px "Segoe Script", "Bradley Hand", cursive';
           c.textAlign = "center";
           c.textBaseline = "bottom";
-          c.fillText(this.areaTargets.length + " objetivos", x + w / 2, y - 7);
+          c.fillText(
+            (gather ? this.gathering.previewNodes.length : this.areaTargets.length) +
+              (gather ? " recursos" : " objetivos"),
+            x + w / 2,
+            y - 7,
+          );
         }
       }
       const pingLife = this.orderPing.until - performance.now();
@@ -586,7 +612,9 @@
       if (this.spacePan || event.button === 1) return false;
       if (
         this.commandMode &&
-        (this.commandMode.startsWith("defense:") || this.commandMode.startsWith("farm:")) &&
+        (this.commandMode.startsWith("defense:") ||
+          this.commandMode.startsWith("farm:") ||
+          this.commandMode.startsWith("gather:")) &&
         event.button === 2
       ) {
         this._cancelCommand();
@@ -651,6 +679,10 @@
         this._markUI();
         return true;
       }
+      if (this.commandMode && this.commandMode.startsWith("gather:")) {
+        this._startDrag("gather", x, y, false, false);
+        return true;
+      }
       if (this.commandMode === "order") {
         this._issueOrder(x, y, event.shiftKey);
         this._cancelCommand();
@@ -687,6 +719,8 @@
       this.drag.x1 = x;
       this.drag.y1 = y;
       if (this.drag.kind === "area") this._updateAreaTargets(false);
+      else if (this.drag.kind === "gather")
+        this.gathering.setPreview(Number(this.commandMode.slice(7)), this._areaBounds(false));
     }
 
     pointerUp(x, y) {
@@ -703,11 +737,18 @@
         else if (this.commandMode === "area")
           this._issueScavengeArea(this._areaBounds(true), this.drag.append);
         else this._issueOrder(x, y, true);
+      } else if (this.drag.kind === "gather") {
+        const resource = Number(this.commandMode.slice(7));
+        this.createGatherArea(resource, this._areaBounds(!moved));
       } else if (moved) this._boxSelect(this.drag.additive);
       else this._pointSelect(x, y, this.drag.additive, zoom);
       this.drag.active = false;
       this.areaTargets.length = 0;
-      if (this.commandMode === "area") this._cancelCommand();
+      if (
+        this.commandMode === "area" ||
+        (this.commandMode && this.commandMode.startsWith("gather:"))
+      )
+        this._cancelCommand();
       this._refreshSelection();
     }
 
@@ -1065,6 +1106,100 @@
       return true;
     }
 
+    armGather(resource) {
+      if (!this.map.hq || (resource !== CFG.RESOURCE.WOOD && resource !== CFG.RESOURCE.METAL))
+        return false;
+      this._cancelCommand();
+      this.commandMode = "gather:" + resource;
+      this.systemPanel = "resources";
+      document.getElementById("c").classList.add("zone-commanding");
+      this.ui.setSystemPanel(this.systemPanel, this._systemModel());
+      this.ui.setCommandMode(this.commandMode);
+      this.ui.toast(
+        "Arrastra sobre " +
+          (resource === CFG.RESOURCE.WOOD
+            ? "los árboles que quieres talar."
+            : "edificios abandonados para recuperar su metal."),
+      );
+      return true;
+    }
+
+    createGatherArea(resource, bounds) {
+      const job = this.gathering.create(resource, bounds);
+      if (!job) {
+        this.ui.toast(
+          resource === CFG.RESOURCE.WOOD
+            ? "No hay árboles libres y accesibles dentro del área."
+            : "No hay metal libre y accesible dentro del área.",
+        );
+        return false;
+      }
+      this.selectedGatherJob = job.id;
+      this.orderPing.x = (bounds.x0 + bounds.x1) / 2;
+      this.orderPing.y = (bounds.y0 + bounds.y1) / 2;
+      this.orderPing.until = performance.now() + 520;
+      this.orderPing.seed++;
+      this.ui.toast(
+        "Área de " +
+          this.gathering.label(resource) +
+          " marcada · " +
+          job.nodeIds.length +
+          " punto" +
+          (job.nodeIds.length === 1 ? "" : "s") +
+          " · " +
+          job.capacity +
+          " trabajadores.",
+      );
+      this._markUI();
+      return true;
+    }
+
+    setGatherStaff(id, delta) {
+      const job = this.tasks.at(id),
+        result = Boolean(
+          job &&
+            job.type === CFG.JOB.GATHER &&
+            this.tasks.setCapacity(id, job.capacity + delta),
+        );
+      if (!result) this.ui.toast("Ese límite de trabajadores ya está alcanzado.");
+      this._markUI();
+      return result;
+    }
+
+    cycleGatherPriority(id) {
+      const job = this.tasks.at(id);
+      if (!job || job.type !== CFG.JOB.GATHER) return false;
+      const next = job.priority >= CFG.PRIORITY.HIGH ? CFG.PRIORITY.LOW : job.priority + 1,
+        result = this.tasks.setPriority(id, next);
+      this._markUI();
+      return result;
+    }
+
+    cancelGatherArea(id) {
+      const job = this.tasks.at(id),
+        result = Boolean(job && job.type === CFG.JOB.GATHER && this.tasks.cancel(id));
+      if (result && this.selectedGatherJob === id) this.selectedGatherJob = null;
+      this.ui.toast(result ? "Área de recolección cancelada." : "El área ya no está activa.");
+      this._markUI();
+      return result;
+    }
+
+    focusGatherArea(id) {
+      const job = this.tasks.at(id),
+        cam = ZS.debug && ZS.debug.cam;
+      if (!job || job.type !== CFG.JOB.GATHER || !job.bounds || !cam) return false;
+      this.selectedGatherJob = id;
+      this.selectedBuilding = null;
+      this._clearSelection();
+      cam.auto = false;
+      cam.x = (job.bounds.x0 + job.bounds.x1) / 2;
+      cam.y = (job.bounds.y0 + job.bounds.y1) / 2;
+      cam.zoom = Math.max(cam.minZoom, 0.9);
+      cam.clamp(window.innerWidth, window.innerHeight);
+      this._markUI();
+      return true;
+    }
+
     armAttack() {
       if (!this._selectedSquads().length) {
         this.ui.toast("Selecciona una o más escuadras primero.");
@@ -1361,6 +1496,8 @@
       this.drag.additive = additive;
       this.drag.append = append;
       if (kind === "area") this._updateAreaTargets(false);
+      else if (kind === "gather")
+        this.gathering.setPreview(Number(this.commandMode.slice(7)), this._areaBounds(false));
     }
 
     _areaBounds(expandClick) {
@@ -1433,11 +1570,21 @@
           else if (!nearest.selected) this._addSelected(nearest);
         }
         this.selectedBuilding = null;
+        this.selectedGatherJob = null;
+        return;
+      }
+      const gatherJob = this.gathering.atPoint(x, y, zoom);
+      if (gatherJob) {
+        if (!additive) this._clearSelection();
+        this.selectedBuilding = null;
+        this.selectedGatherJob = gatherJob.id;
+        this.systemPanel = "resources";
         return;
       }
       const building = this.map.buildingAt(x, y);
       if (!additive) this._clearSelection();
       this.selectedBuilding = building;
+      this.selectedGatherJob = null;
     }
 
     _boxSelect(additive) {
@@ -1560,6 +1707,7 @@
     _cancelCommand() {
       this.commandMode = null;
       this.areaTargets.length = 0;
+      this.gathering.clearPreview();
       this.fortifications.clearPreview();
       this.agriculture.clearPreview();
       document.getElementById("c").classList.remove("zone-commanding");
@@ -1643,6 +1791,7 @@
           window.innerHeight,
         ),
         building = this.map.buildingAt(point.x, point.y),
+        gatherJob = this.gathering.atPoint(point.x, point.y, cam.zoom),
         squads = this._selectedSquads();
       this.hoverBuilding = building;
       let hint = "Clic izq. seleccionar";
@@ -1662,7 +1811,9 @@
           value === "remove"
             ? "Clic para retirar este campo · clic der. cancela"
             : "Clic para preparar " + this.agriculture.label(kind) + " · clic der. cancela";
-      } else if (this.commandMode === "area")
+      } else if (this.commandMode && this.commandMode.startsWith("gather:"))
+        hint = "Arrastra un área de " + this.gathering.label(Number(this.commandMode.slice(7)));
+      else if (this.commandMode === "area")
         hint = "Arrastra para distribuir objetivos de saqueo · Shift añade";
       else if (this.commandMode === "attack") hint = "Clic para atacar y avanzar hasta aquí";
       else if (this.commandMode === "garrison")
@@ -1673,6 +1824,15 @@
             ? "Clic der. guarnecer · Shift pone en cola"
             : "Clic der. saquear · Shift pone en cola"
           : "Clic der. mover · Shift pone en cola";
+      else if (gatherJob)
+        hint =
+          "Clic para gestionar área de " +
+          this.gathering.label(gatherJob.resource) +
+          " · " +
+          gatherJob.assigned.length +
+          "/" +
+          gatherJob.capacity +
+          " trabajadores";
       else if (building)
         hint = "Clic izq. inspeccionar " + (building === this.map.hq ? "CG" : building.name);
       this.ui.showMapHint(hint, event.clientX, event.clientY);
@@ -1883,6 +2043,7 @@
         useCounts,
         tech: this.state.zone.tech,
         research: this.adaptations.researchModel(),
+        gathering: this.gathering.model(),
         fortificationCounts: this.fortifications.counts(),
         defense: this.defense.status(),
         regions: this.regions.model(this.squads.list.length),

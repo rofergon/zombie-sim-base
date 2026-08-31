@@ -78,6 +78,7 @@
   });
   const SYSTEM_META = Object.freeze({
     build: ["Construcción", "zi-build"],
+    resources: ["Recolección", "zi-wood"],
     citizens: ["Habitantes", "zi-worker"],
     research: ["Investigación", "zi-research"],
     agriculture: ["Cultivos", "zi-grain"],
@@ -226,6 +227,7 @@
         "</aside>" +
         '<nav class="zone-main-dock" hidden aria-label="menú principal">' +
         '<button type="button" data-system="build" data-tip="Construcción y adaptación"><span class="zone-icon zi-build"></span><small>construir</small></button>' +
+        '<button type="button" data-system="resources" data-tip="Recolectar madera y metal"><span class="zone-icon zi-wood"></span><small>recolectar</small></button>' +
         '<button type="button" data-main-action="scavenge" data-tip="Marcar una zona de saqueo"><span class="zone-icon zi-scavenge"></span><small>saquear</small></button>' +
         '<button type="button" data-system="citizens" data-tip="Habitantes y trabajo"><span class="zone-icon zi-worker"></span><small>habitantes</small></button>' +
         '<button type="button" data-main-action="squads" data-tip="Patrullas de campo"><span class="zone-icon zi-squads"></span><small>patrullas</small></button>' +
@@ -437,6 +439,11 @@
           layer = event.target.closest("[data-layer]"),
           alert = event.target.closest("[data-alert-index]"),
           citizen = event.target.closest("[data-focus-citizen]"),
+          gatherResource = event.target.closest("[data-gather-resource]"),
+          gatherStaff = event.target.closest("[data-gather-staff]"),
+          gatherPriority = event.target.closest("[data-gather-priority]"),
+          gatherCancel = event.target.closest("[data-gather-cancel]"),
+          gatherFocus = event.target.closest("[data-gather-focus]"),
           research = event.target.closest("[data-system-tech]"),
           researchStaff = event.target.closest("[data-research-staff]"),
           adapt = event.target.closest("[data-system-adapt-submit]"),
@@ -462,6 +469,19 @@
           this.callbacks.focusAlert(Number(alert.dataset.alertIndex));
         else if (citizen && this.callbacks)
           this.callbacks.focusCitizen(Number(citizen.dataset.focusCitizen));
+        else if (gatherResource && this.callbacks)
+          this.callbacks.armGather(Number(gatherResource.dataset.gatherResource));
+        else if (gatherStaff && this.callbacks)
+          this.callbacks.gatherStaff(
+            Number(gatherStaff.dataset.gatherId),
+            Number(gatherStaff.dataset.gatherStaff),
+          );
+        else if (gatherPriority && this.callbacks)
+          this.callbacks.gatherPriority(Number(gatherPriority.dataset.gatherPriority));
+        else if (gatherCancel && this.callbacks)
+          this.callbacks.gatherCancel(Number(gatherCancel.dataset.gatherCancel));
+        else if (gatherFocus && this.callbacks)
+          this.callbacks.gatherFocus(Number(gatherFocus.dataset.gatherFocus));
         else if (research && this.callbacks)
           this.callbacks.research(Number(research.dataset.systemTech));
         else if (researchStaff && this.callbacks)
@@ -680,6 +700,22 @@
           model.selectedBuilding && model.selectedBuilding.id,
           model.selectedCanAdapt,
         ];
+      else if (name === "resources")
+        signatureData = [
+          name,
+          model.gathering.wood,
+          model.gathering.metal,
+          model.gathering.areas.map((area) => [
+            area.id,
+            area.resource,
+            area.total,
+            area.remaining,
+            area.capacity,
+            area.assigned,
+            area.priority,
+            area.nodes,
+          ]),
+        ];
       else if (name === "citizens")
         signatureData = [
           name,
@@ -770,6 +806,7 @@
       if (signature === this.systemSignature) return;
       this.systemSignature = signature;
       if (name === "build") this._renderBuildSystem(model);
+      else if (name === "resources") this._renderResourceSystem(model);
       else if (name === "citizens") this._renderCitizensSystem(model);
       else if (name === "research") this._renderResearchSystem(model);
       else if (name === "agriculture") this._renderAgricultureSystem(model);
@@ -841,6 +878,69 @@
         (model.selectedCanAdapt ? "" : "disabled") +
         '><span class="zone-icon zi-adapt"></span>Adaptar edificio</button></div>';
       this.systemBody.innerHTML = html;
+    }
+
+    _renderResourceSystem(model) {
+      const gathering = model.gathering,
+        priorityLabel = ["detenida", "baja", "normal", "alta"];
+      let html =
+        '<p class="zone-system-lead">Elige un material y arrastra sobre el mapa. Los puntos válidos se marcan en azul; cada área conserva su propio equipo.</p>' +
+        '<div class="zone-resource-picker"><button type="button" data-gather-resource="' +
+        R.WOOD +
+        '"><span class="zone-icon zi-wood"></span><span><b>MADERA</b><small>' +
+        gathering.wood +
+        ' disponible en árboles</small></span><em>MARCAR ÁREA</em></button><button type="button" data-gather-resource="' +
+        R.METAL +
+        '"><span class="zone-icon zi-metal"></span><span><b>METAL</b><small>' +
+        gathering.metal +
+        ' disponible en edificios</small></span><em>MARCAR ÁREA</em></button></div>' +
+        '<h3 class="zone-system-subtitle">ÁREAS ACTIVAS</h3><div class="zone-gather-list">';
+      for (let i = 0; i < gathering.areas.length; i++) {
+        const area = gathering.areas[i],
+          wood = area.resource === R.WOOD,
+          gathered = Math.max(0, area.total - area.remaining),
+          progress = area.total ? Math.min(100, (gathered / area.total) * 100) : 100;
+        html +=
+          '<article class="zone-gather-area"><button type="button" class="zone-gather-focus" data-gather-focus="' +
+          area.id +
+          '"><span class="zone-icon ' +
+          (wood ? "zi-wood" : "zi-metal") +
+          '"></span><span><b>ÁREA ' +
+          area.id +
+          " · " +
+          (wood ? "MADERA" : "METAL") +
+          "</b><small>" +
+          area.remaining +
+          "/" +
+          area.total +
+          " restantes · " +
+          area.nodes +
+          " puntos</small><i><em style=\"width:" +
+          progress.toFixed(1) +
+          '%\"></em></i></span></button><div class="zone-gather-controls"><button type="button" data-gather-id="' +
+          area.id +
+          '" data-gather-staff="-1" ' +
+          (area.capacity <= 0 ? "disabled" : "") +
+          ">−</button><b title=\"trabajadores asignados / solicitados\">" +
+          area.assigned +
+          "/" +
+          area.capacity +
+          '</b><button type="button" data-gather-id="' +
+          area.id +
+          '" data-gather-staff="1" ' +
+          (area.capacity >= CFG.GATHER.MAX_WORKERS ? "disabled" : "") +
+          '>+</button><button type="button" class="zone-gather-priority" data-gather-priority="' +
+          area.id +
+          '" title="cambiar prioridad">' +
+          priorityLabel[area.priority] +
+          '</button><button type="button" class="zone-gather-cancel" data-gather-cancel="' +
+          area.id +
+          '" aria-label="cancelar área">×</button></div></article>';
+      }
+      if (!gathering.areas.length)
+        html +=
+          '<p class="zone-system-empty">No hay áreas activas. Marca árboles o edificios para comenzar.</p>';
+      this.systemBody.innerHTML = html + "</div>";
     }
 
     _renderCitizensSystem(model) {
@@ -2007,6 +2107,11 @@
       this.areaScavenge.classList.toggle("on", mode === "area");
       this.attack.classList.toggle("on", mode === "attack");
       this.garrison.classList.toggle("on", mode === "garrison");
+      for (const button of this.root.querySelectorAll("[data-gather-resource]"))
+        button.classList.toggle(
+          "on",
+          Boolean(mode === "gather:" + Number(button.dataset.gatherResource)),
+        );
     }
 
     showMapHint(text, x, y) {
